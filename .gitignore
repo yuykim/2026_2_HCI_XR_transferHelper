@@ -1,0 +1,45 @@
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# Asset meta files (keep these — remove line below if you want to ignore)
+# *.meta
+
+# Unity crash logs
+sysinfo.txt
+*.stacktrace
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.csproj
+*.sln
+*.suo
+*.user
+*.pidb
+*.booproj
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Android build
+*.apk
+*.aab
+*.keystore
+
+# Meta XR / Oculus
+OculusProjectConfig.asset
+
+# Package cache (can be restored via Package Manager)
+[Pp]ackages/com.unity.*
+[Pp]ackages/com.meta.*
+
+# Crashlytics
+crashlytics-build.properties
