@@ -4,5 +4,13 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
-  m_configObjects: {}
+  m_Scenes:
+  - enabled: 0
+    path: Assets/Scenes/MAIN.unity
+    guid: 52d6d569f72766a4297c96ad8486e57c
+  - enabled: 1
+    path: Assets/Scenes/YUYKIM.unity
+    guid: 379d1fa89e4c8574e91b80601f664ed0
+  m_configObjects:
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: b3fc0b51b0b8384478d6449732962c5b, type: 2}
+    com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 784948735f945a24b9503e63603ef1ed, type: 2}
