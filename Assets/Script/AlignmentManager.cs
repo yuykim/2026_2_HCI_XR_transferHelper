@@ -11,11 +11,6 @@ public class AlignmentManager : MonoBehaviour
 
     private bool alreadyAligned = false;
 
-    private void Start()
-    {
-        AlignNow();
-    }
-
     public void AlignNow()
     {
         if (alignOnlyOnce && alreadyAligned) return;
