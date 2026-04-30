@@ -19,10 +19,15 @@ sysinfo.txt
 .idea/
 *.csproj
 *.sln
+*.unityproj
 *.suo
 *.user
+*.userprefs
 *.pidb
 *.booproj
+*.mdb
+*.opendb
+*.VC.db
 
 # OS
 .DS_Store
@@ -33,6 +38,10 @@ Desktop.ini
 *.apk
 *.aab
 *.keystore
+
+# Profiling / captures
+[Mm]emoryCaptures/
+[Rr]ecordings/
 
 # Meta XR / Oculus
 OculusProjectConfig.asset
