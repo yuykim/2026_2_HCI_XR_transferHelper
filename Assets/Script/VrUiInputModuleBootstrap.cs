@@ -5,7 +5,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.XR;
 
 /// <summary>
-/// XR Interaction Toolkit의 XRUIInputModule을 우선 사용하고, 없으면 OVRInputModule로 대체합니다.
+/// Quest(Android)에서는 OVRInputModule을 우선 사용하고, 그 외 환경은 XRUIInputModule을 우선 사용합니다.
 /// (YUYKIM 씬 EventSystem)
 /// </summary>
 [DefaultExecutionOrder(-200)]
@@ -22,7 +22,7 @@ public sealed class VrUiInputModuleBootstrap : MonoBehaviour
 
         var xrUiType = FindXrUiInputModuleType();
         var ovrType = FindOvrInputModuleType();
-        var preferred = xrUiType ?? ovrType;
+        var preferred = SelectPreferredInputModuleType(xrUiType, ovrType);
         if (preferred == null)
         {
             Debug.LogWarning(
@@ -43,6 +43,15 @@ public sealed class VrUiInputModuleBootstrap : MonoBehaviour
         }
 
         es.gameObject.AddComponent(preferred);
+    }
+
+    private static Type SelectPreferredInputModuleType(Type xrUiType, Type ovrType)
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        return ovrType ?? xrUiType;
+#else
+        return xrUiType ?? ovrType;
+#endif
     }
 
     private static bool ShouldPatchInputModule()

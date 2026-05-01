@@ -2,10 +2,11 @@ using System;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.XR;
 
 /// <summary>
-/// World Space Canvas: XRI의 TrackedDeviceGraphicRaycaster를 우선 설치하고,
-/// 패키지가 없으면 OVRRaycaster로 폴백합니다. (기본 GraphicRaycaster는 제거)
+/// World Space Canvas: Quest(Android)에서는 OVRRaycaster를 우선 설치하고,
+/// 그 외 환경은 TrackedDeviceGraphicRaycaster를 우선 설치합니다. (기본 GraphicRaycaster는 제거)
 /// </summary>
 [DefaultExecutionOrder(-300)]
 [DisallowMultipleComponent]
@@ -19,7 +20,7 @@ public sealed class CanvasInstallOvrRaycaster : MonoBehaviour
 
         var trackedType = FindTrackedDeviceGraphicRaycasterType();
         var ovrType = FindOvrRaycasterType();
-        var preferred = trackedType ?? ovrType;
+        var preferred = SelectPreferredRaycasterType(trackedType, ovrType);
         if (preferred == null)
         {
             Debug.LogWarning(
@@ -30,13 +31,44 @@ public sealed class CanvasInstallOvrRaycaster : MonoBehaviour
         if (GetComponent(preferred) != null)
             return;
 
+        var keepGraphicRaycaster = ShouldKeepGraphicRaycaster();
+
         foreach (var gr in GetComponents<GraphicRaycaster>())
         {
             if (gr != null)
+            {
+                var isBaseGraphicRaycaster = gr.GetType() == typeof(GraphicRaycaster);
+                if (keepGraphicRaycaster && isBaseGraphicRaycaster)
+                    continue;
+
                 DestroyImmediate(gr);
+            }
         }
 
+        if (keepGraphicRaycaster && GetComponent<GraphicRaycaster>() == null)
+            gameObject.AddComponent<GraphicRaycaster>();
+
         gameObject.AddComponent(preferred);
+    }
+
+    private static Type SelectPreferredRaycasterType(Type trackedType, Type ovrType)
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        return ovrType ?? trackedType;
+#else
+        return trackedType ?? ovrType;
+#endif
+    }
+
+    private static bool ShouldKeepGraphicRaycaster()
+    {
+#if UNITY_EDITOR
+        return true;
+#elif UNITY_ANDROID
+        return false;
+#else
+        return !XRSettings.enabled;
+#endif
     }
 
     private static Type FindTrackedDeviceGraphicRaycasterType()
