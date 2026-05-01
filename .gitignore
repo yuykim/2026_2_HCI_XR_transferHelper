@@ -13,6 +13,7 @@
 # Unity crash logs
 sysinfo.txt
 *.stacktrace
+*.log
 
 # Visual Studio / Rider
 .vs/
