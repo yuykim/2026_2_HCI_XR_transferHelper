@@ -5,6 +5,7 @@ using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -12,6 +13,7 @@ public static class NavigationPrototypeBuilder
 {
     private const float RoutePointY = 0.10f;
     private const string TargetScenePath = "Assets/Scenes/YUYKIM2.unity";
+    private const string UiVersionLabel = "v2026.05.01";
 
     [MenuItem("Tools/XR Transfer Helper/Create Navigation Prototype")]
     public static void CreateNavigationPrototype()
@@ -66,7 +68,7 @@ public static class NavigationPrototypeBuilder
 
         var navigationRoot = GetOrCreate("NavigationRoot").transform;
         var routePointsRoot = GetOrCreate("RoutePoints", navigationRoot).transform;
-        var routePoints = CreateRoutePoints(routePointsRoot);
+        var routeOptions = CreateRoutePoints(routePointsRoot);
         var lightRoute = GetOrCreate("LightRoute", navigationRoot);
         lightRoute.transform.localPosition = Vector3.zero;
         lightRoute.transform.localRotation = Quaternion.identity;
@@ -74,11 +76,11 @@ public static class NavigationPrototypeBuilder
         SetupLineRenderer(lightRoute);
         var routePathRenderer = GetOrAddComponent<RoutePathRenderer>(lightRoute);
 
-        AssignRoutePathRenderer(routePathRenderer, routePoints);
+        AssignRoutePathRenderer(routePathRenderer, System.Array.Empty<Transform>());
 
         var navigationController = GetOrAddComponent<RouteNavigationController>(navigationRoot.gameObject);
         var hud = CreateHud(camera);
-        AssignNavigationController(navigationController, camera, routePoints, routePathRenderer, hud);
+        AssignNavigationController(navigationController, camera, routeOptions, routePathRenderer, hud);
         CreatePalmHud(camera, hud);
 
         Selection.activeGameObject = navigationRoot.gameObject;
@@ -93,9 +95,9 @@ public static class NavigationPrototypeBuilder
             Object.DestroyImmediate(existing);
     }
 
-    private static Transform[] CreateRoutePoints(Transform routePointsRoot)
+    private static RouteOptions CreateRoutePoints(Transform routePointsRoot)
     {
-        var positions = new[]
+        var routeA = CreateRouteSequence(routePointsRoot, "RouteA", new[]
         {
             new Vector3(0f, RoutePointY, 0f),
             new Vector3(0f, RoutePointY, 2.4f),
@@ -105,13 +107,46 @@ public static class NavigationPrototypeBuilder
             new Vector3(4.4f, RoutePointY, 7.2f),
             new Vector3(4.4f, RoutePointY, 9.6f),
             new Vector3(6.6f, RoutePointY, 9.6f)
-        };
+        });
 
+        var routeB = CreateRouteSequence(routePointsRoot, "RouteB", new[]
+        {
+            new Vector3(0f, RoutePointY, 0f),
+            new Vector3(-1.8f, RoutePointY, 1.8f),
+            new Vector3(-3.6f, RoutePointY, 3.6f),
+            new Vector3(-3.6f, RoutePointY, 6.2f),
+            new Vector3(-2.2f, RoutePointY, 8.4f),
+            new Vector3(0f, RoutePointY, 10.4f),
+            new Vector3(2.4f, RoutePointY, 11.2f)
+        });
+
+        var routeC = CreateRouteSequence(routePointsRoot, "RouteC", new[]
+        {
+            new Vector3(0f, RoutePointY, 0f),
+            new Vector3(1.8f, RoutePointY, 1.6f),
+            new Vector3(3.8f, RoutePointY, 2.8f),
+            new Vector3(6.2f, RoutePointY, 2.8f),
+            new Vector3(8.8f, RoutePointY, 4.2f),
+            new Vector3(9.6f, RoutePointY, 6.8f),
+            new Vector3(8.2f, RoutePointY, 9.2f)
+        });
+
+        return new RouteOptions
+        {
+            RouteRoot = routePointsRoot,
+            RouteA = routeA,
+            RouteB = routeB,
+            RouteC = routeC
+        };
+    }
+
+    private static Transform[] CreateRouteSequence(Transform routePointsRoot, string routeName, Vector3[] positions)
+    {
+        var group = GetOrCreate(routeName, routePointsRoot).transform;
         var points = new Transform[positions.Length];
         for (var i = 0; i < positions.Length; i++)
         {
-            var name = i == 0 ? "RP_00_Start" : $"RP_{i:00}";
-            var point = GetOrCreate(name, routePointsRoot).transform;
+            var point = GetOrCreate($"{routeName}_RP_{i:00}", group).transform;
             point.localPosition = positions[i];
             point.localRotation = Quaternion.identity;
             point.localScale = Vector3.one * 0.12f;
@@ -168,6 +203,8 @@ public static class NavigationPrototypeBuilder
             hud.AddComponent<GraphicRaycaster>();
         if (hud.GetComponent<CanvasInstallOvrRaycaster>() == null)
             hud.AddComponent<CanvasInstallOvrRaycaster>();
+        var hudFollower = GetOrAddComponent<HeadLockedHudFollower>(hud);
+        hudFollower.SetTarget(camera != null ? camera.transform : null, 1.25f, -0.08f, 12f);
 
         var scaler = GetOrAddComponent<CanvasScaler>(hud);
         scaler.dynamicPixelsPerUnit = 14f;
@@ -187,80 +224,63 @@ public static class NavigationPrototypeBuilder
         }
         hud.transform.localScale = Vector3.one * 0.0018f;
 
-        var destinationPanel = CreatePanel("DestinationSelectPanel", canvasRect, new Vector2(0f, 240f), new Vector2(460f, 170f),
+        var destinationPanel = CreatePanel("DestinationSelectPanel", canvasRect, new Vector2(0f, 110f), new Vector2(900f, 250f),
             new Color(0.02f, 0.04f, 0.06f, 0.78f));
-        var destinationTitle = CreateText("Title", destinationPanel, "Destination Ready", 34, TextAlignmentOptions.Center);
+        var destinationTitle = CreateText("Title", destinationPanel, "Choose Route", 38, TextAlignmentOptions.Center);
         destinationTitle.fontStyle = FontStyles.Bold;
-        Stretch(destinationTitle.rectTransform, 20f, 102f, 20f, 16f);
-        var button = CreateButton("Destination_A_Button", destinationPanel, "Start Route A", new Vector2(0f, -34f), new Vector2(270f, 72f));
+        SetRect(destinationTitle.rectTransform, new Vector2(0f, 72f), new Vector2(840f, 58f));
+        var buttonA = CreateButton("Destination_A_Button", destinationPanel, "Route A", new Vector2(-280f, -52f), new Vector2(250f, 82f));
+        var buttonB = CreateButton("Destination_B_Button", destinationPanel, "Route B", new Vector2(0f, -52f), new Vector2(250f, 82f));
+        var buttonC = CreateButton("Destination_C_Button", destinationPanel, "Route C", new Vector2(280f, -52f), new Vector2(250f, 82f));
 
-        var remainingPanel = CreatePanel("RemainingDistancePanel", canvasRect, new Vector2(-490f, -300f), new Vector2(360f, 112f),
-            new Color(0f, 0f, 0f, 0f));
-        var remainingText = CreateText("RemainingDistanceText", remainingPanel, "Remaining: 0m", 32, TextAlignmentOptions.MidlineLeft);
+        var remainingPanel = CreatePanel("RemainingDistancePanel", canvasRect, new Vector2(0f, 303f), new Vector2(620f, 82f),
+            new Color(0.01f, 0.02f, 0.03f, 0.42f));
+        var remainingText = CreateText("RemainingDistanceText", remainingPanel, "To TRAIN: 0m", 36, TextAlignmentOptions.Center);
         remainingText.fontStyle = FontStyles.Bold;
-        remainingText.rectTransform.anchorMin = new Vector2(0f, 0.5f);
-        remainingText.rectTransform.anchorMax = new Vector2(0f, 0.5f);
-        remainingText.rectTransform.pivot = new Vector2(0f, 0.5f);
-        remainingText.rectTransform.anchoredPosition = new Vector2(0f, 16f);
-        remainingText.rectTransform.sizeDelta = new Vector2(360f, 50f);
+        SetRect(remainingText.rectTransform, Vector2.zero, new Vector2(590f, 60f));
         var etaText = CreateText("EtaText", remainingPanel, "Arrival: < 1min", 24, TextAlignmentOptions.MidlineLeft);
-        etaText.fontStyle = FontStyles.Bold;
-        etaText.color = new Color(1f, 1f, 1f, 0.92f);
-        etaText.rectTransform.anchorMin = new Vector2(0f, 0.5f);
-        etaText.rectTransform.anchorMax = new Vector2(0f, 0.5f);
-        etaText.rectTransform.pivot = new Vector2(0f, 0.5f);
-        etaText.rectTransform.anchoredPosition = new Vector2(0f, -20f);
-        etaText.rectTransform.sizeDelta = new Vector2(360f, 38f);
+        etaText.gameObject.SetActive(false);
+        var versionText = CreateText("VersionText", remainingPanel, UiVersionLabel, 16, TextAlignmentOptions.MidlineLeft);
+        versionText.gameObject.SetActive(false);
 
-        var statusPanel = CreatePanel("StatusPanel", canvasRect, new Vector2(-440f, -238f), new Vector2(440f, 56f),
+        var statusPanel = CreatePanel("StatusPanel", canvasRect, new Vector2(0f, -178f), new Vector2(960f, 64f),
             new Color(0f, 0f, 0f, 0f));
-        var statusText = CreateText("StatusText", statusPanel, "Ready.", 24, TextAlignmentOptions.MidlineLeft);
+        var statusText = CreateText("StatusText", statusPanel, "Ready.", 23, TextAlignmentOptions.Center);
         statusText.color = new Color(1f, 0.96f, 0.72f, 1f);
-        Stretch(statusText.rectTransform, 0f, 0f, 0f, 0f);
+        Stretch(statusText.rectTransform, 18f, 8f, 18f, 8f);
 
-        var arrowText = CreateText("DirectionArrow", canvasRect, "\u2191", 110, TextAlignmentOptions.Center);
+        var arrowText = CreateText("DirectionArrow", canvasRect, "\u2191", 96, TextAlignmentOptions.Center);
         arrowText.enableAutoSizing = false;
         arrowText.color = new Color(1f, 0.95f, 0.45f, 0.9f);
         arrowText.fontStyle = FontStyles.Bold;
         arrowText.raycastTarget = false;
-        arrowText.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-        arrowText.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-        arrowText.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        arrowText.rectTransform.anchoredPosition = new Vector2(0f, -30f);
-        arrowText.rectTransform.sizeDelta = new Vector2(180f, 180f);
+        SetRect(arrowText.rectTransform, new Vector2(0f, -40f), new Vector2(160f, 160f));
 
-        var warningPanel = CreatePanel("WarningPanel", canvasRect, new Vector2(0f, 88f), new Vector2(760f, 180f),
+        var warningPanel = CreatePanel("WarningPanel", canvasRect, new Vector2(0f, 150f), new Vector2(760f, 104f),
             new Color(0f, 0f, 0f, 0f));
         var warningGroup = GetOrAddComponent<CanvasGroup>(warningPanel.gameObject);
-        var warningText = CreateText("WarningText", warningPanel, "OFF COURSE!\nPlease return to the path.", 48, TextAlignmentOptions.Center);
+        var warningText = CreateText("WarningText", warningPanel, "OFF COURSE!\nPlease return to the path.", 38, TextAlignmentOptions.Center);
         warningText.color = new Color(1f, 0.08f, 0.04f, 1f);
         warningText.fontStyle = FontStyles.Bold;
-        warningText.lineSpacing = -16f;
+        warningText.lineSpacing = -4f;
         Stretch(warningText.rectTransform, 0f, 0f, 0f, 0f);
 
-        var progressPanel = CreatePanel("ProgressPanel", canvasRect, new Vector2(430f, -294f), new Vector2(506f, 120f),
+        var progressPanel = CreatePanel("ProgressPanel", canvasRect, new Vector2(0f, -292f), new Vector2(620f, 118f),
             new Color(0f, 0f, 0f, 0f));
         var progressSlider = CreateProgressSlider(progressPanel);
-        var runnerText = CreateText("RunnerIcon", progressPanel, "RUN", 24, TextAlignmentOptions.Center);
+        var runnerText = CreateText("RunnerIcon", progressPanel, "RUN", 20, TextAlignmentOptions.Center);
         runnerText.color = new Color(1f, 0.9f, 0.22f, 1f);
         runnerText.fontStyle = FontStyles.Bold;
-        runnerText.rectTransform.anchorMin = new Vector2(0f, 0.5f);
-        runnerText.rectTransform.anchorMax = new Vector2(0f, 0.5f);
-        runnerText.rectTransform.anchoredPosition = new Vector2(38f, 32f);
-        runnerText.rectTransform.sizeDelta = new Vector2(74f, 58f);
-        var trainText = CreateText("TrainIcon", progressPanel, "TRAIN", 23, TextAlignmentOptions.Center);
+        SetRect(runnerText.rectTransform, new Vector2(-240f, 44f), new Vector2(82f, 32f));
+        var trainText = CreateText("TrainIcon", progressPanel, "TRAIN", 20, TextAlignmentOptions.Center);
         trainText.color = new Color(1f, 0.9f, 0.22f, 1f);
         trainText.fontStyle = FontStyles.Bold;
-        trainText.rectTransform.anchorMin = new Vector2(1f, 0.5f);
-        trainText.rectTransform.anchorMax = new Vector2(1f, 0.5f);
-        trainText.rectTransform.anchoredPosition = new Vector2(-35f, 32f);
-        trainText.rectTransform.sizeDelta = new Vector2(88f, 58f);
+        SetRect(trainText.rectTransform, new Vector2(240f, 44f), new Vector2(96f, 32f));
         var progressText = CreateText("ProgressText", progressPanel, "0%", 20, TextAlignmentOptions.Center);
         progressText.color = new Color(1f, 0.9f, 0.22f, 1f);
-        progressText.rectTransform.anchorMin = new Vector2(0.5f, 0f);
-        progressText.rectTransform.anchorMax = new Vector2(0.5f, 0f);
-        progressText.rectTransform.anchoredPosition = new Vector2(0f, 14f);
-        progressText.rectTransform.sizeDelta = new Vector2(100f, 36f);
+        SetRect(progressText.rectTransform, new Vector2(0f, -42f), new Vector2(120f, 30f));
+        remainingPanel.gameObject.SetActive(false);
+        progressPanel.gameObject.SetActive(false);
 
         var arrivalPanel = CreatePanel("ArrivalPanel", canvasRect, new Vector2(0f, 68f), new Vector2(560f, 250f),
             new Color(0f, 0f, 0f, 0f));
@@ -276,7 +296,9 @@ public static class NavigationPrototypeBuilder
         return new HudReferences
         {
             DestinationPanel = destinationPanel.gameObject,
-            DestinationButton = button,
+            DestinationButtonA = buttonA,
+            DestinationButtonB = buttonB,
+            DestinationButtonC = buttonC,
             RemainingDistanceText = remainingText,
             EtaText = etaText,
             StatusText = statusText,
@@ -301,33 +323,56 @@ public static class NavigationPrototypeBuilder
         GetOrAddComponent<GraphicRaycaster>(palmHudObject).enabled = false;
 
         var rect = palmHudObject.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(360f, 160f);
-        palmHudObject.transform.localScale = Vector3.one * 0.0009f;
+        rect.sizeDelta = new Vector2(500f, 280f);
+        palmHudObject.transform.localScale = Vector3.one * 0.001f;
         if (camera != null)
             palmHudObject.transform.position = camera.transform.position + camera.transform.forward * 0.6f;
 
-        var panel = CreatePanel("PalmPanel", rect, Vector2.zero, new Vector2(320f, 130f), new Color(0.02f, 0.05f, 0.08f, 0.82f));
-        var remaining = CreateText("PalmRemainingText", panel, "Remaining: 0m", 34, TextAlignmentOptions.Center);
+        var panel = CreatePanel("PalmPanel", rect, Vector2.zero, new Vector2(460f, 240f), new Color(0.02f, 0.05f, 0.08f, 0.85f));
+        var heading = CreateText("PalmHeadingText", panel, "Ready.", 22, TextAlignmentOptions.Center);
+        heading.color = new Color(1f, 0.96f, 0.72f, 1f);
+        heading.fontStyle = FontStyles.Bold;
+        heading.rectTransform.anchorMin = new Vector2(0.5f, 0.8f);
+        heading.rectTransform.anchorMax = new Vector2(0.5f, 0.8f);
+        heading.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        heading.rectTransform.sizeDelta = new Vector2(420f, 42f);
+        heading.rectTransform.anchoredPosition = Vector2.zero;
+
+        var remaining = CreateText("PalmRemainingText", panel, "To TRAIN: 0m", 34, TextAlignmentOptions.Center);
         remaining.fontStyle = FontStyles.Bold;
-        remaining.rectTransform.anchorMin = new Vector2(0.5f, 0.65f);
-        remaining.rectTransform.anchorMax = new Vector2(0.5f, 0.65f);
+        remaining.rectTransform.anchorMin = new Vector2(0.5f, 0.56f);
+        remaining.rectTransform.anchorMax = new Vector2(0.5f, 0.56f);
         remaining.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        remaining.rectTransform.sizeDelta = new Vector2(300f, 60f);
+        remaining.rectTransform.sizeDelta = new Vector2(420f, 60f);
         remaining.rectTransform.anchoredPosition = Vector2.zero;
 
-        var status = CreateText("PalmStatusText", panel, "Ready.", 24, TextAlignmentOptions.Center);
-        status.color = new Color(0.95f, 0.97f, 1f, 0.95f);
-        status.rectTransform.anchorMin = new Vector2(0.5f, 0.3f);
-        status.rectTransform.anchorMax = new Vector2(0.5f, 0.3f);
-        status.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        status.rectTransform.sizeDelta = new Vector2(300f, 42f);
-        status.rectTransform.anchoredPosition = Vector2.zero;
+        var eta = CreateText("PalmEtaText", panel, "Arrival: < 1min", 24, TextAlignmentOptions.Center);
+        eta.color = new Color(0.95f, 0.97f, 1f, 0.95f);
+        eta.rectTransform.anchorMin = new Vector2(0.5f, 0.34f);
+        eta.rectTransform.anchorMax = new Vector2(0.5f, 0.34f);
+        eta.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        eta.rectTransform.sizeDelta = new Vector2(420f, 42f);
+        eta.rectTransform.anchoredPosition = Vector2.zero;
+
+        var version = CreateText("PalmVersionText", panel, UiVersionLabel, 16, TextAlignmentOptions.Center);
+        version.color = new Color(1f, 1f, 1f, 0.72f);
+        version.rectTransform.anchorMin = new Vector2(0.5f, 0.15f);
+        version.rectTransform.anchorMax = new Vector2(0.5f, 0.15f);
+        version.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        version.rectTransform.sizeDelta = new Vector2(320f, 24f);
+        version.rectTransform.anchoredPosition = Vector2.zero;
 
         var follower = GetOrAddComponent<PalmHudFollower>(palmHudObject);
         follower.SetCamera(camera != null ? camera.transform : null);
 
         var mirror = GetOrAddComponent<RouteHudMirror>(palmHudObject);
-        mirror.SetSources(sourceHud.RemainingDistanceText, sourceHud.StatusText, remaining, status);
+        mirror.SetSources(
+            sourceHud.RemainingDistanceText,
+            sourceHud.StatusText,
+            sourceHud.EtaText,
+            remaining,
+            heading,
+            eta);
     }
 
     private static Slider CreateProgressSlider(RectTransform parent)
@@ -337,8 +382,8 @@ public static class NavigationPrototypeBuilder
         sliderRect.anchorMin = new Vector2(0.5f, 0.5f);
         sliderRect.anchorMax = new Vector2(0.5f, 0.5f);
         sliderRect.pivot = new Vector2(0.5f, 0.5f);
-        sliderRect.anchoredPosition = new Vector2(0f, 0f);
-        sliderRect.sizeDelta = new Vector2(336f, 32f);
+        sliderRect.anchoredPosition = new Vector2(0f, -8f);
+        sliderRect.sizeDelta = new Vector2(360f, 28f);
 
         var slider = GetOrAddComponent<Slider>(sliderObject);
         slider.minValue = 0f;
@@ -413,7 +458,7 @@ public static class NavigationPrototypeBuilder
         var rect = CreatePanel(name, parent, anchoredPosition, size, new Color(0.04f, 0.42f, 0.9f, 0.95f));
         rect.GetComponent<Image>().raycastTarget = true;
         var button = GetOrAddComponent<Button>(rect.gameObject);
-        var labelText = CreateText("Label", rect, label, 34, TextAlignmentOptions.Center);
+        var labelText = CreateText("Label", rect, label, 40, TextAlignmentOptions.Center);
         labelText.fontStyle = FontStyles.Bold;
         Stretch(labelText.rectTransform, 8f, 8f, 8f, 8f);
         return button;
@@ -500,6 +545,18 @@ public static class NavigationPrototypeBuilder
         rect.offsetMax = new Vector2(-right, -top);
     }
 
+    private static void SetRect(RectTransform rect, Vector2 anchoredPosition, Vector2 size)
+    {
+        if (rect == null)
+            return;
+
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = size;
+    }
+
     private static void EnsureEventSystem()
     {
         var eventSystemObject = EventSystem.current != null
@@ -536,17 +593,42 @@ public static class NavigationPrototypeBuilder
     private static void AssignNavigationController(
         RouteNavigationController controller,
         Camera camera,
-        Transform[] routePoints,
+        RouteOptions routeOptions,
         RoutePathRenderer routePathRenderer,
         HudReferences hud)
     {
         var serializedObject = new SerializedObject(controller);
         serializedObject.FindProperty("userTransform").objectReferenceValue = camera != null ? camera.transform : null;
-        serializedObject.FindProperty("routePoints").arraySize = routePoints.Length;
-        for (var i = 0; i < routePoints.Length; i++)
-            serializedObject.FindProperty("routePoints").GetArrayElementAtIndex(i).objectReferenceValue = routePoints[i];
+        serializedObject.FindProperty("routePoints").arraySize = 0;
+        serializedObject.FindProperty("routePointsA").arraySize = routeOptions.RouteA.Length;
+        for (var i = 0; i < routeOptions.RouteA.Length; i++)
+            serializedObject.FindProperty("routePointsA").GetArrayElementAtIndex(i).objectReferenceValue = routeOptions.RouteA[i];
+        serializedObject.FindProperty("routePointsB").arraySize = routeOptions.RouteB.Length;
+        for (var i = 0; i < routeOptions.RouteB.Length; i++)
+            serializedObject.FindProperty("routePointsB").GetArrayElementAtIndex(i).objectReferenceValue = routeOptions.RouteB[i];
+        serializedObject.FindProperty("routePointsC").arraySize = routeOptions.RouteC.Length;
+        for (var i = 0; i < routeOptions.RouteC.Length; i++)
+            serializedObject.FindProperty("routePointsC").GetArrayElementAtIndex(i).objectReferenceValue = routeOptions.RouteC[i];
         serializedObject.FindProperty("routePathRenderer").objectReferenceValue = routePathRenderer;
+        serializedObject.FindProperty("alignRoutesToStartupView").boolValue = true;
+        serializedObject.FindProperty("routePointsRoot").objectReferenceValue = routeOptions.RouteRoot;
+        serializedObject.FindProperty("routeDeviationThreshold").floatValue = 2.5f;
+        serializedObject.FindProperty("preferHandRay").boolValue = true;
+        serializedObject.FindProperty("allowGazeRay").boolValue = false;
+        serializedObject.FindProperty("allowControllerTriggerFallback").boolValue = true;
+        serializedObject.FindProperty("allowControllerRay").boolValue = true;
+        serializedObject.FindProperty("maxSelectionRayDistance").floatValue = 12f;
+        serializedObject.FindProperty("selectionHitPadding").floatValue = 220f;
+        serializedObject.FindProperty("gazeScreenFallbackMaxPixels").floatValue = 520f;
+        serializedObject.FindProperty("showSelectionRay").boolValue = true;
+        serializedObject.FindProperty("followSelectionPanelToUser").boolValue = false;
+        serializedObject.FindProperty("hudFollowDistance").floatValue = 1.25f;
+        serializedObject.FindProperty("hudFollowVerticalOffset").floatValue = -0.08f;
+        serializedObject.FindProperty("hudFollowSmooth").floatValue = 12f;
         serializedObject.FindProperty("destinationSelectPanel").objectReferenceValue = hud.DestinationPanel;
+        serializedObject.FindProperty("routeAButton").objectReferenceValue = hud.DestinationButtonA;
+        serializedObject.FindProperty("routeBButton").objectReferenceValue = hud.DestinationButtonB;
+        serializedObject.FindProperty("routeCButton").objectReferenceValue = hud.DestinationButtonC;
         serializedObject.FindProperty("remainingDistanceText").objectReferenceValue = hud.RemainingDistanceText;
         serializedObject.FindProperty("etaText").objectReferenceValue = hud.EtaText;
         serializedObject.FindProperty("statusText").objectReferenceValue = hud.StatusText;
@@ -560,18 +642,29 @@ public static class NavigationPrototypeBuilder
         serializedObject.FindProperty("arrivalGroup").objectReferenceValue = hud.ArrivalGroup;
         serializedObject.ApplyModifiedProperties();
 
-        hud.DestinationButton.onClick.RemoveAllListeners();
-        while (hud.DestinationButton.onClick.GetPersistentEventCount() > 0)
-            UnityEventTools.RemovePersistentListener(hud.DestinationButton.onClick, 0);
-        UnityEventTools.AddPersistentListener(hud.DestinationButton.onClick, controller.StartNavigation);
+        ConfigureRouteButton(hud.DestinationButtonA, controller.StartRouteA);
+        ConfigureRouteButton(hud.DestinationButtonB, controller.StartRouteB);
+        ConfigureRouteButton(hud.DestinationButtonC, controller.StartRouteC);
         EditorUtility.SetDirty(controller);
-        EditorUtility.SetDirty(hud.DestinationButton);
+        EditorUtility.SetDirty(hud.DestinationButtonA);
+        EditorUtility.SetDirty(hud.DestinationButtonB);
+        EditorUtility.SetDirty(hud.DestinationButtonC);
+    }
+
+    private static void ConfigureRouteButton(Button button, UnityAction action)
+    {
+        button.onClick.RemoveAllListeners();
+        while (button.onClick.GetPersistentEventCount() > 0)
+            UnityEventTools.RemovePersistentListener(button.onClick, 0);
+        UnityEventTools.AddPersistentListener(button.onClick, action);
     }
 
     private sealed class HudReferences
     {
         public GameObject DestinationPanel;
-        public Button DestinationButton;
+        public Button DestinationButtonA;
+        public Button DestinationButtonB;
+        public Button DestinationButtonC;
         public TMP_Text RemainingDistanceText;
         public TMP_Text EtaText;
         public TMP_Text StatusText;
@@ -583,6 +676,14 @@ public static class NavigationPrototypeBuilder
         public TMP_Text DirectionArrowText;
         public RectTransform DirectionArrowRect;
         public Slider ProgressSlider;
+    }
+
+    private sealed class RouteOptions
+    {
+        public Transform RouteRoot;
+        public Transform[] RouteA;
+        public Transform[] RouteB;
+        public Transform[] RouteC;
     }
 
     private static T GetOrAddComponent<T>(GameObject gameObject) where T : Component
