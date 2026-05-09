@@ -44,6 +44,12 @@ public sealed class RouteNavigationController : MonoBehaviour
     [SerializeField] private float eyeWarningDistance = 0.85f;
     [SerializeField] private float eyeWarningHeightOffset = -0.02f;
 
+    [Header("3D Direction Arrow")]
+    [SerializeField] private float worldArrowDistance = 0.85f;
+    [SerializeField] private float worldArrowHeightOffset = -0.45f;
+    [SerializeField] private float worldArrowSmooth = 14f;
+    [SerializeField] private float worldArrowScale = 1f;
+
     [Header("UI")]
     [SerializeField] private GameObject destinationSelectPanel;
     [SerializeField] private Button routeAButton;
@@ -104,6 +110,8 @@ public sealed class RouteNavigationController : MonoBehaviour
     private object _ovrControllerMask;
     private TextMeshPro _eyeWarningText;
     private bool _routesAlignedToStartupView;
+    private Transform _worldDirectionArrow;
+    private Renderer[] _worldDirectionArrowRenderers;
 
     private enum RouteChoice
     {
@@ -143,7 +151,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         SetStatus("Use hand/controller ray on A/B/C, then pinch or trigger.");
         UpdateRemainingDistanceText(0f);
         UpdateProgress(0f);
-        SetDirectionArrow(false, false, 0f);
+        SetDirectionArrow(false, false, Vector3.forward);
         SetSelectionRayVisible(false);
         ResetRouteSelection();
     }
@@ -479,7 +487,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         SetArrived(false);
         SetWarning(false);
         SetStatus($"Route {routeName} selected. Follow the yellow arrow.");
-        SetDirectionArrow(true, false, 0f);
+        SetDirectionArrow(true, false, userTransform != null ? userTransform.forward : Vector3.forward);
 
         SetRoutePreview(routePoints);
     }
@@ -1449,7 +1457,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         SetArrived(true);
         UpdateRemainingDistanceText(0f);
         UpdateProgress(0f);
-        SetDirectionArrow(false, false, 0f);
+        SetDirectionArrow(false, false, Vector3.forward);
         SetStatus("Arrived.");
     }
 
@@ -1610,7 +1618,7 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     private void UpdateDirectionArrow(bool offRoute)
     {
-        if (directionArrowRect == null || routePoints == null || routePoints.Length == 0)
+        if (routePoints == null || routePoints.Length == 0)
             return;
 
         var destination = routePoints[Mathf.Clamp(_targetIndex, 0, routePoints.Length - 1)];
@@ -1620,30 +1628,166 @@ public sealed class RouteNavigationController : MonoBehaviour
         var toTarget = destination.position - userTransform.position;
         toTarget.y = 0f;
 
-        var forward = userTransform.forward;
-        forward.y = 0f;
-
-        if (toTarget.sqrMagnitude <= 0.0001f || forward.sqrMagnitude <= 0.0001f)
+        if (toTarget.sqrMagnitude <= 0.0001f)
             return;
 
-        var signedAngle = Vector3.SignedAngle(forward.normalized, toTarget.normalized, Vector3.up);
-        SetDirectionArrow(true, offRoute, -signedAngle);
+        SetDirectionArrow(true, offRoute, toTarget.normalized);
     }
 
-    private void SetDirectionArrow(bool active, bool offRoute, float zRotation)
+    private void SetDirectionArrow(bool active, bool offRoute, Vector3 worldDirection)
     {
         if (directionArrowText != null)
-        {
-            directionArrowText.gameObject.SetActive(active);
-            directionArrowText.color = offRoute
-                ? new Color(1f, 0.08f, 0.04f, 0.92f)
-                : new Color(1f, 0.95f, 0.45f, 0.9f);
-        }
+            directionArrowText.gameObject.SetActive(false);
 
         if (directionArrowRect != null)
+            directionArrowRect.gameObject.SetActive(false);
+
+        if (!active)
         {
-            directionArrowRect.gameObject.SetActive(active);
-            directionArrowRect.localEulerAngles = new Vector3(0f, 0f, zRotation);
+            SetWorldDirectionArrowVisible(false);
+            return;
+        }
+
+        EnsureWorldDirectionArrow();
+        if (_worldDirectionArrow == null || userTransform == null)
+            return;
+
+        var cameraForward = userTransform.forward;
+        cameraForward.y = 0f;
+        if (cameraForward.sqrMagnitude <= 0.0001f)
+            cameraForward = userTransform.forward;
+
+        var targetPosition = userTransform.position +
+                             cameraForward.normalized * worldArrowDistance +
+                             Vector3.up * worldArrowHeightOffset;
+        if (!_worldDirectionArrow.gameObject.activeSelf)
+            _worldDirectionArrow.position = targetPosition;
+        else
+            _worldDirectionArrow.position = Vector3.Lerp(
+                _worldDirectionArrow.position,
+                targetPosition,
+                Time.deltaTime * Mathf.Max(1f, worldArrowSmooth));
+
+        worldDirection.y = 0f;
+        if (worldDirection.sqrMagnitude > 0.0001f)
+        {
+            var targetRotation = Quaternion.LookRotation(worldDirection.normalized, Vector3.up);
+            _worldDirectionArrow.rotation = !_worldDirectionArrow.gameObject.activeSelf
+                ? targetRotation
+                : Quaternion.Slerp(
+                    _worldDirectionArrow.rotation,
+                    targetRotation,
+                    Time.deltaTime * Mathf.Max(1f, worldArrowSmooth));
+        }
+
+        SetWorldDirectionArrowColor(offRoute
+            ? new Color(1f, 0.12f, 0.06f, 1f)
+            : new Color(1f, 0.9f, 0.12f, 1f));
+        SetWorldDirectionArrowVisible(true);
+    }
+
+    private void EnsureWorldDirectionArrow()
+    {
+        if (_worldDirectionArrow != null)
+            return;
+
+        var arrowRoot = new GameObject("WorldDirectionArrow");
+        arrowRoot.transform.SetParent(transform, false);
+        arrowRoot.transform.localScale = Vector3.one * Mathf.Max(0.1f, worldArrowScale);
+
+        var material = CreateWorldArrowMaterial();
+
+        var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        body.name = "Body";
+        body.transform.SetParent(arrowRoot.transform, false);
+        body.transform.localPosition = new Vector3(0f, 0f, -0.08f);
+        body.transform.localScale = new Vector3(0.08f, 0.035f, 0.36f);
+
+        var bodyCollider = body.GetComponent<Collider>();
+        if (bodyCollider != null)
+            Destroy(bodyCollider);
+
+        var bodyRenderer = body.GetComponent<Renderer>();
+        if (bodyRenderer != null)
+            bodyRenderer.sharedMaterial = material;
+
+        var head = new GameObject("Head");
+        head.transform.SetParent(arrowRoot.transform, false);
+        head.transform.localPosition = new Vector3(0f, 0f, 0.16f);
+        head.transform.localRotation = Quaternion.identity;
+        var meshFilter = head.AddComponent<MeshFilter>();
+        meshFilter.sharedMesh = CreateArrowHeadMesh();
+        var headRenderer = head.AddComponent<MeshRenderer>();
+        headRenderer.sharedMaterial = material;
+
+        _worldDirectionArrow = arrowRoot.transform;
+        _worldDirectionArrowRenderers = arrowRoot.GetComponentsInChildren<Renderer>(true);
+        SetWorldDirectionArrowVisible(false);
+    }
+
+    private static Material CreateWorldArrowMaterial()
+    {
+        var shader = Shader.Find("Unlit/Color");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+
+        var material = shader != null ? new Material(shader) : new Material(Shader.Find("Standard"));
+        material.color = new Color(1f, 0.9f, 0.12f, 1f);
+        return material;
+    }
+
+    private static Mesh CreateArrowHeadMesh()
+    {
+        var mesh = new Mesh { name = "ArrowHeadMesh" };
+        const int segments = 24;
+        const float radius = 0.12f;
+        const float length = 0.24f;
+        var vertices = new Vector3[segments + 2];
+        var triangles = new int[segments * 6];
+
+        vertices[0] = new Vector3(0f, 0f, length * 0.5f);
+        vertices[1] = new Vector3(0f, 0f, -length * 0.5f);
+        for (var i = 0; i < segments; i++)
+        {
+            var angle = i / (float)segments * Mathf.PI * 2f;
+            vertices[i + 2] = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, -length * 0.5f);
+        }
+
+        var tri = 0;
+        for (var i = 0; i < segments; i++)
+        {
+            var current = i + 2;
+            var next = i == segments - 1 ? 2 : i + 3;
+            triangles[tri++] = 0;
+            triangles[tri++] = current;
+            triangles[tri++] = next;
+            triangles[tri++] = 1;
+            triangles[tri++] = next;
+            triangles[tri++] = current;
+        }
+
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    private void SetWorldDirectionArrowVisible(bool visible)
+    {
+        if (_worldDirectionArrow != null)
+            _worldDirectionArrow.gameObject.SetActive(visible);
+    }
+
+    private void SetWorldDirectionArrowColor(Color color)
+    {
+        if (_worldDirectionArrowRenderers == null)
+            return;
+
+        foreach (var renderer in _worldDirectionArrowRenderers)
+        {
+            if (renderer != null && renderer.sharedMaterial != null)
+                renderer.sharedMaterial.color = color;
         }
     }
 
