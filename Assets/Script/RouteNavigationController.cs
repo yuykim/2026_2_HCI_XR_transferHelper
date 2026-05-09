@@ -54,6 +54,8 @@ public sealed class RouteNavigationController : MonoBehaviour
     [SerializeField] private float worldArrowHeightOffset = -0.45f;
     [SerializeField] private float worldArrowSmooth = 14f;
     [SerializeField] private float worldArrowScale = 1f;
+    [SerializeField] private Color worldArrowNormalColor = new Color(1f, 0.9f, 0.12f, 1f);
+    [SerializeField] private Color worldArrowOffRouteColor = new Color(1f, 0.12f, 0.06f, 1f);
 
     [Header("Audio Feedback")]
     [SerializeField] private AudioSource navigationAudioSource;
@@ -1767,7 +1769,16 @@ public sealed class RouteNavigationController : MonoBehaviour
         if (warningText != null)
             warningText.gameObject.SetActive(active);
 
+        ApplyDirectionArrowWarningColor(active);
         UpdateEyeLevelOffRouteWarning(active);
+    }
+
+    private void ApplyDirectionArrowWarningColor(bool offRoute)
+    {
+        if (_worldDirectionArrow == null || !_worldDirectionArrow.gameObject.activeSelf)
+            return;
+
+        SetWorldDirectionArrowColor(offRoute ? worldArrowOffRouteColor : worldArrowNormalColor);
     }
 
     private void UpdateEyeLevelOffRouteWarning(bool active)
@@ -1899,9 +1910,7 @@ public sealed class RouteNavigationController : MonoBehaviour
                     Time.deltaTime * Mathf.Max(1f, worldArrowSmooth));
         }
 
-        SetWorldDirectionArrowColor(offRoute
-            ? new Color(1f, 0.12f, 0.06f, 1f)
-            : new Color(1f, 0.9f, 0.12f, 1f));
+        SetWorldDirectionArrowColor(offRoute ? worldArrowOffRouteColor : worldArrowNormalColor);
         SetWorldDirectionArrowVisible(true);
     }
 
