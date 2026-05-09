@@ -522,7 +522,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         if (offRoute)
             SetStatus("Please return to the path.");
         else if (!TryUpdateRouteInstructionStatus())
-            SetStatus($"Heading to RP {_targetIndex:00}");
+            SetStatus(string.Empty);
 
         if (_targetIndex >= routePoints.Length - 1 &&
             HorizontalDistance(userTransform.position, routePoints[_targetIndex].position) <= pointReachRadius)
@@ -578,7 +578,7 @@ public sealed class RouteNavigationController : MonoBehaviour
 
         SetArrived(false);
         SetWarning(false);
-        SetStatus($"Route {routeName} selected. Follow the yellow arrow.");
+        SetStatus(string.Empty);
         SetDirectionArrow(true, false, userTransform != null ? userTransform.forward : Vector3.forward);
 
         SetRoutePreview(routePoints);
