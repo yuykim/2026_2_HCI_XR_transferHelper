@@ -30,7 +30,7 @@ public sealed class RouteNavigationController : MonoBehaviour
     [SerializeField] private bool allowControllerTriggerFallback = true;
     [SerializeField] private bool allowControllerRay = true;
     [SerializeField] private float maxSelectionRayDistance = 4.0f;
-    [SerializeField] private float selectionHitPadding = 220f;
+    [SerializeField] private float selectionHitPadding = 80f;
     [SerializeField] private float gazeScreenFallbackMaxPixels = 520f;
     [SerializeField] private bool showSelectionRay = true;
     [SerializeField] private float selectionRayStartOffset = 0.08f;
@@ -151,6 +151,7 @@ public sealed class RouteNavigationController : MonoBehaviour
     private void ConfigurePinchRouteSelection()
     {
         EnsureRouteButtons();
+        selectionHitPadding = Mathf.Min(selectionHitPadding, 80f);
 
         var hudObject = GameObject.Find("NavigationHUD");
         if (hudObject == null)
@@ -158,6 +159,7 @@ public sealed class RouteNavigationController : MonoBehaviour
 
         followSelectionPanelToUser = false;
         allowGazeRay = false;
+        RemovePalmHud();
         EnsureHeadLockedHudFollower(hudObject);
         NormalizeHudForReadability(hudObject);
 
@@ -168,6 +170,13 @@ public sealed class RouteNavigationController : MonoBehaviour
         var gazeSelector = hudObject.GetComponent<GazeRouteSelector>();
         if (gazeSelector != null)
             Destroy(gazeSelector);
+    }
+
+    private static void RemovePalmHud()
+    {
+        var palmHud = GameObject.Find("PalmHUD");
+        if (palmHud != null)
+            Destroy(palmHud);
     }
 
     private void AlignRoutesToStartupViewIfNeeded()
@@ -499,10 +508,11 @@ public sealed class RouteNavigationController : MonoBehaviour
 
         EnsureRouteButtons();
         ResolvePinchInputsIfNeeded();
-        ApplyRouteButtonColors();
 
         if (Time.time < _selectionEnabledTime)
         {
+            _currentPinchTarget = RouteChoice.None;
+            ApplyRouteButtonColors();
             var remaining = Mathf.CeilToInt(_selectionEnabledTime - Time.time);
             SetStatus($"Get ready: aim hand/controller ray, then pinch or trigger ({remaining})");
             return;
@@ -660,9 +670,10 @@ public sealed class RouteNavigationController : MonoBehaviour
     {
         var best = RouteChoice.None;
         var bestDistance = float.MaxValue;
-        EvaluateRouteButtonRay(routeAButton, RouteChoice.A, selectionRay, maxSelectionRayDistance, selectionHitPadding, ref best, ref bestDistance);
-        EvaluateRouteButtonRay(routeBButton, RouteChoice.B, selectionRay, maxSelectionRayDistance, selectionHitPadding, ref best, ref bestDistance);
-        EvaluateRouteButtonRay(routeCButton, RouteChoice.C, selectionRay, maxSelectionRayDistance, selectionHitPadding, ref best, ref bestDistance);
+        var bestScore = float.MaxValue;
+        EvaluateRouteButtonRay(routeAButton, RouteChoice.A, selectionRay, maxSelectionRayDistance, selectionHitPadding, ref best, ref bestDistance, ref bestScore);
+        EvaluateRouteButtonRay(routeBButton, RouteChoice.B, selectionRay, maxSelectionRayDistance, selectionHitPadding, ref best, ref bestDistance, ref bestScore);
+        EvaluateRouteButtonRay(routeCButton, RouteChoice.C, selectionRay, maxSelectionRayDistance, selectionHitPadding, ref best, ref bestDistance, ref bestScore);
 
         if (best == RouteChoice.None)
         {
@@ -824,7 +835,8 @@ public sealed class RouteNavigationController : MonoBehaviour
         float maxDistance,
         float hitPadding,
         ref RouteChoice best,
-        ref float bestDistance)
+        ref float bestDistance,
+        ref float bestScore)
     {
         if (button == null || !button.interactable || !button.gameObject.activeInHierarchy)
             return;
@@ -844,16 +856,34 @@ public sealed class RouteNavigationController : MonoBehaviour
 
         var hitPoint = ray.GetPoint(distance);
         var localPoint = rect.InverseTransformPoint(hitPoint);
+        var local2D = new Vector2(localPoint.x, localPoint.y);
+        var buttonRect = rect.rect;
         var paddedRect = rect.rect;
         paddedRect.xMin -= hitPadding;
         paddedRect.xMax += hitPadding;
         paddedRect.yMin -= hitPadding;
         paddedRect.yMax += hitPadding;
-        if (!paddedRect.Contains(new Vector2(localPoint.x, localPoint.y)))
+        if (!paddedRect.Contains(local2D))
+            return;
+
+        var score = GetRectHitScore(buttonRect, local2D);
+        if (score > bestScore)
+            return;
+        if (Mathf.Approximately(score, bestScore) && distance >= bestDistance)
             return;
 
         bestDistance = distance;
+        bestScore = score;
         best = choice;
+    }
+
+    private static float GetRectHitScore(Rect rect, Vector2 point)
+    {
+        var centerOffset = point - rect.center;
+        var halfWidth = Mathf.Max(1f, rect.width * 0.5f);
+        var halfHeight = Mathf.Max(1f, rect.height * 0.5f);
+        var normalized = new Vector2(centerOffset.x / halfWidth, centerOffset.y / halfHeight);
+        return normalized.sqrMagnitude;
     }
 
     private static void EvaluateRouteButtonScreenCenter(
@@ -897,6 +927,8 @@ public sealed class RouteNavigationController : MonoBehaviour
             return;
 
         var image = button.GetComponent<Image>();
+        button.transition = Selectable.Transition.None;
+        button.targetGraphic = image;
         if (image != null)
             image.color = active ? Color.Lerp(color, Color.white, 0.58f) : color;
         button.transform.localScale = active ? Vector3.one * 1.08f : Vector3.one;

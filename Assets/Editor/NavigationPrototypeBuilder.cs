@@ -81,7 +81,7 @@ public static class NavigationPrototypeBuilder
         var navigationController = GetOrAddComponent<RouteNavigationController>(navigationRoot.gameObject);
         var hud = CreateHud(camera);
         AssignNavigationController(navigationController, camera, routeOptions, routePathRenderer, hud);
-        CreatePalmHud(camera, hud);
+        DeleteIfExists("PalmHUD");
 
         Selection.activeGameObject = navigationRoot.gameObject;
         EditorUtility.SetDirty(navigationRoot.gameObject);
@@ -313,68 +313,6 @@ public static class NavigationPrototypeBuilder
         };
     }
 
-    private static void CreatePalmHud(Camera camera, HudReferences sourceHud)
-    {
-        var palmHudObject = GetOrCreateUi("PalmHUD", null);
-        var palmCanvas = GetOrAddComponent<Canvas>(palmHudObject);
-        palmCanvas.renderMode = RenderMode.WorldSpace;
-        palmCanvas.worldCamera = camera;
-        GetOrAddComponent<CanvasScaler>(palmHudObject).dynamicPixelsPerUnit = 20f;
-        GetOrAddComponent<GraphicRaycaster>(palmHudObject).enabled = false;
-
-        var rect = palmHudObject.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(500f, 280f);
-        palmHudObject.transform.localScale = Vector3.one * 0.001f;
-        if (camera != null)
-            palmHudObject.transform.position = camera.transform.position + camera.transform.forward * 0.6f;
-
-        var panel = CreatePanel("PalmPanel", rect, Vector2.zero, new Vector2(460f, 240f), new Color(0.02f, 0.05f, 0.08f, 0.85f));
-        var heading = CreateText("PalmHeadingText", panel, "Ready.", 22, TextAlignmentOptions.Center);
-        heading.color = new Color(1f, 0.96f, 0.72f, 1f);
-        heading.fontStyle = FontStyles.Bold;
-        heading.rectTransform.anchorMin = new Vector2(0.5f, 0.8f);
-        heading.rectTransform.anchorMax = new Vector2(0.5f, 0.8f);
-        heading.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        heading.rectTransform.sizeDelta = new Vector2(420f, 42f);
-        heading.rectTransform.anchoredPosition = Vector2.zero;
-
-        var remaining = CreateText("PalmRemainingText", panel, "To TRAIN: 0m", 34, TextAlignmentOptions.Center);
-        remaining.fontStyle = FontStyles.Bold;
-        remaining.rectTransform.anchorMin = new Vector2(0.5f, 0.56f);
-        remaining.rectTransform.anchorMax = new Vector2(0.5f, 0.56f);
-        remaining.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        remaining.rectTransform.sizeDelta = new Vector2(420f, 60f);
-        remaining.rectTransform.anchoredPosition = Vector2.zero;
-
-        var eta = CreateText("PalmEtaText", panel, "Arrival: < 1min", 24, TextAlignmentOptions.Center);
-        eta.color = new Color(0.95f, 0.97f, 1f, 0.95f);
-        eta.rectTransform.anchorMin = new Vector2(0.5f, 0.34f);
-        eta.rectTransform.anchorMax = new Vector2(0.5f, 0.34f);
-        eta.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        eta.rectTransform.sizeDelta = new Vector2(420f, 42f);
-        eta.rectTransform.anchoredPosition = Vector2.zero;
-
-        var version = CreateText("PalmVersionText", panel, UiVersionLabel, 16, TextAlignmentOptions.Center);
-        version.color = new Color(1f, 1f, 1f, 0.72f);
-        version.rectTransform.anchorMin = new Vector2(0.5f, 0.15f);
-        version.rectTransform.anchorMax = new Vector2(0.5f, 0.15f);
-        version.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        version.rectTransform.sizeDelta = new Vector2(320f, 24f);
-        version.rectTransform.anchoredPosition = Vector2.zero;
-
-        var follower = GetOrAddComponent<PalmHudFollower>(palmHudObject);
-        follower.SetCamera(camera != null ? camera.transform : null);
-
-        var mirror = GetOrAddComponent<RouteHudMirror>(palmHudObject);
-        mirror.SetSources(
-            sourceHud.RemainingDistanceText,
-            sourceHud.StatusText,
-            sourceHud.EtaText,
-            remaining,
-            heading,
-            eta);
-    }
-
     private static Slider CreateProgressSlider(RectTransform parent)
     {
         var sliderObject = GetOrCreateUi("ProgressSlider", parent);
@@ -458,6 +396,8 @@ public static class NavigationPrototypeBuilder
         var rect = CreatePanel(name, parent, anchoredPosition, size, new Color(0.04f, 0.42f, 0.9f, 0.95f));
         rect.GetComponent<Image>().raycastTarget = true;
         var button = GetOrAddComponent<Button>(rect.gameObject);
+        button.transition = Selectable.Transition.None;
+        button.targetGraphic = rect.GetComponent<Image>();
         var labelText = CreateText("Label", rect, label, 40, TextAlignmentOptions.Center);
         labelText.fontStyle = FontStyles.Bold;
         Stretch(labelText.rectTransform, 8f, 8f, 8f, 8f);
@@ -618,7 +558,7 @@ public static class NavigationPrototypeBuilder
         serializedObject.FindProperty("allowControllerTriggerFallback").boolValue = true;
         serializedObject.FindProperty("allowControllerRay").boolValue = true;
         serializedObject.FindProperty("maxSelectionRayDistance").floatValue = 12f;
-        serializedObject.FindProperty("selectionHitPadding").floatValue = 220f;
+        serializedObject.FindProperty("selectionHitPadding").floatValue = 80f;
         serializedObject.FindProperty("gazeScreenFallbackMaxPixels").floatValue = 520f;
         serializedObject.FindProperty("showSelectionRay").boolValue = true;
         serializedObject.FindProperty("followSelectionPanelToUser").boolValue = false;
@@ -653,6 +593,8 @@ public static class NavigationPrototypeBuilder
 
     private static void ConfigureRouteButton(Button button, UnityAction action)
     {
+        button.transition = Selectable.Transition.None;
+        button.targetGraphic = button.GetComponent<Image>();
         button.onClick.RemoveAllListeners();
         while (button.onClick.GetPersistentEventCount() > 0)
             UnityEventTools.RemovePersistentListener(button.onClick, 0);
