@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Scenes/YUYKIM2.unity
+    guid: c646f586ae964ff4082d4cb25fe9907c
+  - enabled: 0
     path: Assets/Scenes/MAIN.unity
     guid: 52d6d569f72766a4297c96ad8486e57c
   m_configObjects:
