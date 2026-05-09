@@ -14,11 +14,29 @@ public static class NavigationPrototypeBuilder
     private const float RoutePointY = 0.10f;
     private const string TargetScenePath = "Assets/Scenes/YUYKIM2.unity";
     private const string UiVersionLabel = "v2026.05.01";
+    private const string OffRouteSoundPath = "Assets/sound/off_the_course_sound.mp3";
+    private const string ArrivalSoundPath = "Assets/sound/arrive sound.mp3";
 
     [MenuItem("Tools/XR Transfer Helper/Create Navigation Prototype")]
     public static void CreateNavigationPrototype()
     {
         CreateNavigationPrototypeInCurrentScene();
+    }
+
+    [MenuItem("Tools/XR Transfer Helper/Apply Navigation Sounds")]
+    public static void ApplyNavigationSounds()
+    {
+        var controller = Object.FindObjectOfType<RouteNavigationController>();
+        if (controller == null)
+        {
+            Debug.LogError("RouteNavigationController was not found in the current scene.");
+            return;
+        }
+
+        AssignNavigationSounds(controller);
+        EditorUtility.SetDirty(controller);
+        EditorSceneManager.MarkSceneDirty(controller.gameObject.scene);
+        Debug.Log("Navigation sounds assigned.");
     }
 
     [MenuItem("Tools/XR Transfer Helper/Create YUYKIM2 VR UI Scene")]
@@ -549,6 +567,13 @@ public static class NavigationPrototypeBuilder
         serializedObject.FindProperty("routePointsC").arraySize = routeOptions.RouteC.Length;
         for (var i = 0; i < routeOptions.RouteC.Length; i++)
             serializedObject.FindProperty("routePointsC").GetArrayElementAtIndex(i).objectReferenceValue = routeOptions.RouteC[i];
+        ConfigureRouteInstructions(serializedObject.FindProperty("routeInstructionsA"), routeOptions.RouteA, new[]
+        {
+            new InstructionSeed(1, "앞으로 5m 이동하세요"),
+            new InstructionSeed(3, "오른쪽 복도로 이동하세요", true)
+        });
+        ConfigureRouteInstructions(serializedObject.FindProperty("routeInstructionsB"), routeOptions.RouteB, System.Array.Empty<InstructionSeed>());
+        ConfigureRouteInstructions(serializedObject.FindProperty("routeInstructionsC"), routeOptions.RouteC, System.Array.Empty<InstructionSeed>());
         serializedObject.FindProperty("routePathRenderer").objectReferenceValue = routePathRenderer;
         serializedObject.FindProperty("alignRoutesToStartupView").boolValue = true;
         serializedObject.FindProperty("routePointsRoot").objectReferenceValue = routeOptions.RouteRoot;
@@ -580,6 +605,7 @@ public static class NavigationPrototypeBuilder
         serializedObject.FindProperty("progressSlider").objectReferenceValue = hud.ProgressSlider;
         serializedObject.FindProperty("warningGroup").objectReferenceValue = hud.WarningGroup;
         serializedObject.FindProperty("arrivalGroup").objectReferenceValue = hud.ArrivalGroup;
+        AssignNavigationSounds(serializedObject, controller);
         serializedObject.ApplyModifiedProperties();
 
         ConfigureRouteButton(hud.DestinationButtonA, controller.StartRouteA);
@@ -589,6 +615,53 @@ public static class NavigationPrototypeBuilder
         EditorUtility.SetDirty(hud.DestinationButtonA);
         EditorUtility.SetDirty(hud.DestinationButtonB);
         EditorUtility.SetDirty(hud.DestinationButtonC);
+    }
+
+    private static void AssignNavigationSounds(RouteNavigationController controller)
+    {
+        var serializedObject = new SerializedObject(controller);
+        AssignNavigationSounds(serializedObject, controller);
+        serializedObject.ApplyModifiedProperties();
+    }
+
+    private static void AssignNavigationSounds(SerializedObject serializedObject, RouteNavigationController controller)
+    {
+        var audioSource = controller.GetComponent<AudioSource>();
+        if (audioSource == null)
+            audioSource = Undo.AddComponent<AudioSource>(controller.gameObject);
+
+        audioSource.playOnAwake = false;
+        audioSource.loop = false;
+        audioSource.spatialBlend = 0f;
+
+        serializedObject.FindProperty("navigationAudioSource").objectReferenceValue = audioSource;
+        serializedObject.FindProperty("offRouteWarningClip").objectReferenceValue =
+            AssetDatabase.LoadAssetAtPath<AudioClip>(OffRouteSoundPath);
+        serializedObject.FindProperty("arrivalClip").objectReferenceValue =
+            AssetDatabase.LoadAssetAtPath<AudioClip>(ArrivalSoundPath);
+        serializedObject.FindProperty("offRouteSoundCooldownSeconds").floatValue = 2.5f;
+        serializedObject.FindProperty("navigationSoundVolume").floatValue = 1f;
+        EditorUtility.SetDirty(audioSource);
+    }
+
+    private static void ConfigureRouteInstructions(SerializedProperty instructionsProperty, Transform[] route, InstructionSeed[] seeds)
+    {
+        instructionsProperty.arraySize = seeds.Length;
+        for (var i = 0; i < seeds.Length; i++)
+        {
+            var seed = seeds[i];
+            var routeIndex = Mathf.Clamp(seed.RouteIndex, 0, route.Length - 1);
+            var element = instructionsProperty.GetArrayElementAtIndex(i);
+            element.FindPropertyRelative("point").objectReferenceValue = route[routeIndex];
+            element.FindPropertyRelative("message").stringValue = seed.Message;
+            element.FindPropertyRelative("triggerRadius").floatValue = 1.0f;
+            element.FindPropertyRelative("displaySeconds").floatValue = 3.0f;
+            element.FindPropertyRelative("requireLookDirection").boolValue = seed.RequireLookDirection;
+            element.FindPropertyRelative("lookTarget").objectReferenceValue =
+                seed.RequireLookDirection && routeIndex < route.Length - 1 ? route[routeIndex + 1] : null;
+            element.FindPropertyRelative("localLookDirection").vector3Value = Vector3.forward;
+            element.FindPropertyRelative("requiredLookAngle").floatValue = 45f;
+        }
     }
 
     private static void ConfigureRouteButton(Button button, UnityAction action)
@@ -626,6 +699,20 @@ public static class NavigationPrototypeBuilder
         public Transform[] RouteA;
         public Transform[] RouteB;
         public Transform[] RouteC;
+    }
+
+    private struct InstructionSeed
+    {
+        public int RouteIndex;
+        public string Message;
+        public bool RequireLookDirection;
+
+        public InstructionSeed(int routeIndex, string message, bool requireLookDirection = false)
+        {
+            RouteIndex = routeIndex;
+            Message = message;
+            RequireLookDirection = requireLookDirection;
+        }
     }
 
     private static T GetOrAddComponent<T>(GameObject gameObject) where T : Component

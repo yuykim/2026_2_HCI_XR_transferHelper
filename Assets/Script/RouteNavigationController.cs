@@ -19,6 +19,11 @@ public sealed class RouteNavigationController : MonoBehaviour
     [SerializeField] private float routeDeviationThreshold = 2.5f;
     [SerializeField] private float walkingSpeedMetersPerSecond = 1.2f;
 
+    [Header("Route Instructions")]
+    [SerializeField] private RouteInstructionPoint[] routeInstructionsA = Array.Empty<RouteInstructionPoint>();
+    [SerializeField] private RouteInstructionPoint[] routeInstructionsB = Array.Empty<RouteInstructionPoint>();
+    [SerializeField] private RouteInstructionPoint[] routeInstructionsC = Array.Empty<RouteInstructionPoint>();
+
     [Header("Pinch Route Selection")]
     [SerializeField] private bool usePinchRouteSelection = true;
     [SerializeField] private float selectionStartupGraceSeconds = 1.0f;
@@ -49,6 +54,13 @@ public sealed class RouteNavigationController : MonoBehaviour
     [SerializeField] private float worldArrowHeightOffset = -0.45f;
     [SerializeField] private float worldArrowSmooth = 14f;
     [SerializeField] private float worldArrowScale = 1f;
+
+    [Header("Audio Feedback")]
+    [SerializeField] private AudioSource navigationAudioSource;
+    [SerializeField] private AudioClip offRouteWarningClip;
+    [SerializeField] private AudioClip arrivalClip;
+    [SerializeField] private float offRouteSoundCooldownSeconds = 2.5f;
+    [SerializeField, Range(0f, 1f)] private float navigationSoundVolume = 1f;
 
     [Header("UI")]
     [SerializeField] private GameObject destinationSelectPanel;
@@ -112,6 +124,26 @@ public sealed class RouteNavigationController : MonoBehaviour
     private bool _routesAlignedToStartupView;
     private Transform _worldDirectionArrow;
     private Renderer[] _worldDirectionArrowRenderers;
+    private RouteInstructionPoint[] _activeRouteInstructions = Array.Empty<RouteInstructionPoint>();
+    private int _nextInstructionIndex;
+    private string _activeInstructionMessage;
+    private float _activeInstructionUntil;
+    private bool _wasOffRoute;
+    private float _nextOffRouteSoundTime;
+    private bool _arrivalSoundPlayed;
+
+    [Serializable]
+    public sealed class RouteInstructionPoint
+    {
+        public Transform point;
+        [TextArea(2, 4)] public string message = "앞으로 이동하세요";
+        public float triggerRadius = 1.0f;
+        public float displaySeconds = 3.0f;
+        public bool requireLookDirection;
+        public Transform lookTarget;
+        public Vector3 localLookDirection = Vector3.forward;
+        [Range(5f, 120f)] public float requiredLookAngle = 40f;
+    }
 
     private enum RouteChoice
     {
@@ -125,6 +157,7 @@ public sealed class RouteNavigationController : MonoBehaviour
     {
         userTransform = Camera.main != null ? Camera.main.transform : null;
         routePathRenderer = GetComponentInChildren<RoutePathRenderer>();
+        EnsureInstructionTemplates();
     }
 
     private void Awake()
@@ -137,10 +170,64 @@ public sealed class RouteNavigationController : MonoBehaviour
 
         if ((routePointsA == null || routePointsA.Length == 0) && routePoints != null && routePoints.Length > 0)
             routePointsA = routePoints;
+
+        EnsureInstructionTemplates();
+    }
+
+    private void OnValidate()
+    {
+        EnsureInstructionTemplates();
+    }
+
+    [ContextMenu("Apply Default Route A Instructions")]
+    private void ApplyDefaultRouteAInstructions()
+    {
+        PopulateDefaultRouteAInstructions(true);
+    }
+
+    private void EnsureInstructionTemplates()
+    {
+        PopulateDefaultRouteAInstructions(false);
+
+        if (routeInstructionsB == null)
+            routeInstructionsB = Array.Empty<RouteInstructionPoint>();
+        if (routeInstructionsC == null)
+            routeInstructionsC = Array.Empty<RouteInstructionPoint>();
+    }
+
+    private void PopulateDefaultRouteAInstructions(bool force)
+    {
+        if (!force && routeInstructionsA != null && routeInstructionsA.Length > 0)
+            return;
+        if (routePointsA == null || routePointsA.Length <= 4)
+            return;
+
+        routeInstructionsA = new[]
+        {
+            new RouteInstructionPoint
+            {
+                point = routePointsA[1],
+                message = "앞으로 5m 이동하세요",
+                triggerRadius = 1f,
+                displaySeconds = 3f,
+                requireLookDirection = false
+            },
+            new RouteInstructionPoint
+            {
+                point = routePointsA[3],
+                message = "오른쪽 복도로 이동하세요",
+                triggerRadius = 1f,
+                displaySeconds = 3f,
+                requireLookDirection = true,
+                lookTarget = routePointsA[4],
+                requiredLookAngle = 45f
+            }
+        };
     }
 
     private void Start()
     {
+        EnsureNavigationAudioSource();
         ConfigurePinchRouteSelection();
         SetRoutePreview(null);
         SetWarning(false);
@@ -429,11 +516,12 @@ public sealed class RouteNavigationController : MonoBehaviour
 
         var offRoute = DistanceFromRoute(userTransform.position) > routeDeviationThreshold;
         SetWarning(offRoute);
+        UpdateNavigationAudio(offRoute);
         UpdateDirectionArrow(offRoute);
 
         if (offRoute)
             SetStatus("Please return to the path.");
-        else
+        else if (!TryUpdateRouteInstructionStatus())
             SetStatus($"Heading to RP {_targetIndex:00}");
 
         if (_targetIndex >= routePoints.Length - 1 &&
@@ -477,6 +565,10 @@ public sealed class RouteNavigationController : MonoBehaviour
         _arrived = false;
         _targetIndex = 1;
         _totalRouteDistance = CalculateRouteDistance();
+        SetActiveRouteInstructions(routeName);
+        _wasOffRoute = false;
+        _nextOffRouteSoundTime = 0f;
+        _arrivalSoundPlayed = false;
 
         if (destinationSelectPanel != null)
             destinationSelectPanel.SetActive(false);
@@ -1449,16 +1541,143 @@ public sealed class RouteNavigationController : MonoBehaviour
         }
     }
 
+    private void SetActiveRouteInstructions(string routeName)
+    {
+        switch (routeName)
+        {
+            case "A":
+                _activeRouteInstructions = routeInstructionsA ?? Array.Empty<RouteInstructionPoint>();
+                break;
+            case "B":
+                _activeRouteInstructions = routeInstructionsB ?? Array.Empty<RouteInstructionPoint>();
+                break;
+            case "C":
+                _activeRouteInstructions = routeInstructionsC ?? Array.Empty<RouteInstructionPoint>();
+                break;
+            default:
+                _activeRouteInstructions = Array.Empty<RouteInstructionPoint>();
+                break;
+        }
+
+        _nextInstructionIndex = 0;
+        _activeInstructionMessage = null;
+        _activeInstructionUntil = 0f;
+    }
+
+    private bool TryUpdateRouteInstructionStatus()
+    {
+        if (!string.IsNullOrEmpty(_activeInstructionMessage) && Time.time < _activeInstructionUntil)
+        {
+            SetStatus(_activeInstructionMessage);
+            return true;
+        }
+
+        _activeInstructionMessage = null;
+
+        while (_nextInstructionIndex < _activeRouteInstructions.Length)
+        {
+            var instruction = _activeRouteInstructions[_nextInstructionIndex];
+            if (instruction == null || instruction.point == null || string.IsNullOrEmpty(instruction.message))
+            {
+                _nextInstructionIndex++;
+                continue;
+            }
+
+            var radius = Mathf.Max(0.05f, instruction.triggerRadius);
+            if (HorizontalDistance(userTransform.position, instruction.point.position) > radius)
+                return false;
+
+            _activeInstructionMessage = instruction.message;
+            if (instruction.requireLookDirection && !IsLookingAtInstructionDirection(instruction))
+            {
+                SetStatus(_activeInstructionMessage);
+                return true;
+            }
+
+            _nextInstructionIndex++;
+            _activeInstructionUntil = Time.time + Mathf.Max(0.1f, instruction.displaySeconds);
+            SetStatus(_activeInstructionMessage);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool IsLookingAtInstructionDirection(RouteInstructionPoint instruction)
+    {
+        var forward = userTransform.forward;
+        forward.y = 0f;
+        if (forward.sqrMagnitude <= 0.0001f)
+            return false;
+
+        var expectedDirection = instruction.lookTarget != null
+            ? instruction.lookTarget.position - userTransform.position
+            : instruction.point.TransformDirection(instruction.localLookDirection);
+        expectedDirection.y = 0f;
+        if (expectedDirection.sqrMagnitude <= 0.0001f)
+            return false;
+
+        var angle = Vector3.Angle(forward.normalized, expectedDirection.normalized);
+        return angle <= Mathf.Max(1f, instruction.requiredLookAngle);
+    }
+
     private void Arrive()
     {
         _arrived = true;
         SetWarning(false);
+        UpdateNavigationAudio(false);
         SetEyeWarningVisible(false);
         SetArrived(true);
+        PlayArrivalSound();
         UpdateRemainingDistanceText(0f);
         UpdateProgress(0f);
         SetDirectionArrow(false, false, Vector3.forward);
         SetStatus("Arrived.");
+    }
+
+    private void EnsureNavigationAudioSource()
+    {
+        if (navigationAudioSource == null)
+            navigationAudioSource = GetComponent<AudioSource>();
+        if (navigationAudioSource == null)
+            navigationAudioSource = gameObject.AddComponent<AudioSource>();
+
+        navigationAudioSource.playOnAwake = false;
+        navigationAudioSource.loop = false;
+        navigationAudioSource.spatialBlend = 0f;
+    }
+
+    private void UpdateNavigationAudio(bool offRoute)
+    {
+        if (offRoute)
+        {
+            if (!_wasOffRoute || Time.time >= _nextOffRouteSoundTime)
+            {
+                PlayNavigationClip(offRouteWarningClip);
+                _nextOffRouteSoundTime = Time.time + Mathf.Max(0.1f, offRouteSoundCooldownSeconds);
+            }
+        }
+
+        _wasOffRoute = offRoute;
+    }
+
+    private void PlayArrivalSound()
+    {
+        if (_arrivalSoundPlayed)
+            return;
+
+        _arrivalSoundPlayed = true;
+        PlayNavigationClip(arrivalClip);
+    }
+
+    private void PlayNavigationClip(AudioClip clip)
+    {
+        if (clip == null)
+            return;
+
+        EnsureNavigationAudioSource();
+        if (navigationAudioSource != null)
+            navigationAudioSource.PlayOneShot(clip, navigationSoundVolume);
     }
 
     private float CalculateRouteDistance()
