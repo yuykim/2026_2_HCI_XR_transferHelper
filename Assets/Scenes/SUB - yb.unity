@@ -1552,7 +1552,8 @@ MonoBehaviour:
   routePathRenderer: {fileID: 945539998}
   alignRoutesToStartupView: 1
   routePointsRoot: {fileID: 229566096}
-  pointReachRadius: 0.35
+  pointReachRadius: 0.75
+  pointPassRadius: 1.4
   routeDeviationThreshold: 2.5
   walkingSpeedMetersPerSecond: 1.2
   routeInstructionsA:
@@ -1602,8 +1603,13 @@ MonoBehaviour:
   worldArrowHeightOffset: -0.4
   worldArrowSmooth: 14
   worldArrowScale: 0.6
-  worldArrowNormalColor: {r: 1, g: 0.9, b: 0.12, a: 1}
+  worldArrowNormalColor: {r: 0.45, g: 1, b: 1, a: 1}
   worldArrowOffRouteColor: {r: 1, g: 0.12, b: 0.06, a: 1}
+  showAdditionalInfoWithBButton: 1
+  demoNextTrainArrival: In 2 min
+  demoNextTrainDetail: Line 2 - City Hall
+  demoNearestExitName: Exit 3
+  demoNearestExitDistance: 24m
   navigationAudioSource: {fileID: 290581551}
   offRouteWarningClip: {fileID: 8300000, guid: 217c0b2034b94d2498213280f80101cf, type: 3}
   arrivalClip: {fileID: 8300000, guid: 69b1589ec6d83da40938ea7f89ce72ab, type: 3}
@@ -5018,8 +5024,8 @@ LineRenderer:
       m_RotationOrder: 4
     colorGradient:
       serializedVersion: 2
-      key0: {r: 0.101960786, g: 0.9490196, b: 1, a: 1}
-      key1: {r: 0.2509804, g: 1, b: 0.4509804, a: 1}
+      key0: {r: 0.55, g: 1, b: 1, a: 1}
+      key1: {r: 0.05, g: 0.92, b: 1, a: 1}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -5072,6 +5078,11 @@ MonoBehaviour:
   routePoints: []
   routeHeight: 0.1
   useRoutePointY: 1
+  upcomingRouteStartColor: {r: 0.55, g: 1, b: 1, a: 1}
+  upcomingRouteEndColor: {r: 0.05, g: 0.92, b: 1, a: 1}
+  routeUnderlayColor: {r: 0.05, g: 0.55, b: 1, a: 0.32}
+  routeUnderlayWidthMultiplier: 2.8
+  traveledRouteColor: {r: 0.02, g: 0.36, b: 0.16, a: 0.95}
 --- !u!1 &948277871
 GameObject:
   m_ObjectHideFlags: 0
