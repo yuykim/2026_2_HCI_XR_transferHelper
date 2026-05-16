@@ -8,8 +8,8 @@ public sealed class RouteNavigationController : MonoBehaviour
 {
     private const bool ShowStartupCalibrationFrame = true;
     private const float StartupCalibrationFrameDistance = 1.1f;
-    private const float StartupCalibrationFrameSize = 0.28f;
-    private const float StartupCalibrationFrameLineWidth = 0.008f;
+    private const float StartupCalibrationFrameSize = 0.20f;
+    private const float StartupCalibrationFrameLineWidth = 0.006f;
     private static readonly Color StartupCalibrationFrameColor = new Color(0f, 0.95f, 1f, 1f);
 
     [Header("Route")]
@@ -1743,7 +1743,8 @@ public sealed class RouteNavigationController : MonoBehaviour
         UpdateRemainingDistanceText(0f);
         UpdateProgress(0f);
         SetDirectionArrow(false, false, Vector3.forward);
-        SetStatus("Arrived.");
+        SetStatus(string.Empty);
+        SetStatusVisible(false);
     }
 
     private void EnsureNavigationAudioSource()
