@@ -14,9 +14,6 @@ public sealed class RouteNavigationController : MonoBehaviour
     [SerializeField] private Transform[] routePointsC;
     [SerializeField] private RoutePathRenderer routePathRenderer;
     [SerializeField] private bool alignRoutesToStartupView = true;
-    [SerializeField] private bool realignRoutesOnAButton = true;
-    [SerializeField] private OVRInput.Controller routeRealignController = OVRInput.Controller.RTouch;
-    [SerializeField] private OVRInput.Button routeRealignButton = OVRInput.Button.One;
     [SerializeField] private Transform routePointsRoot;
     [SerializeField] private float pointReachRadius = 0.35f;
     [SerializeField] private float routeDeviationThreshold = 2.5f;
@@ -329,10 +326,7 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     private void HandleManualRouteRealignment()
     {
-        if (!realignRoutesOnAButton)
-            return;
-
-        if (!OVRInput.GetDown(routeRealignButton, routeRealignController))
+        if (!OVRInput.GetDown(OVRInput.Button.One, OVRInput.Controller.RTouch))
             return;
 
         AlignRoutesToCurrentView();
