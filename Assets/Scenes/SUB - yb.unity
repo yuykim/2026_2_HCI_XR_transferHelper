@@ -1481,6 +1481,9 @@ MonoBehaviour:
   - {fileID: 1083918367}
   routePathRenderer: {fileID: 945539998}
   alignRoutesToStartupView: 1
+  realignRoutesOnAButton: 1
+  routeRealignController: 2
+  routeRealignButton: 1
   routePointsRoot: {fileID: 229566096}
   pointReachRadius: 0.35
   routeDeviationThreshold: 2.5

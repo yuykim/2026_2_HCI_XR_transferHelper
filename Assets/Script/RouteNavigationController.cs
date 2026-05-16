@@ -14,6 +14,9 @@ public sealed class RouteNavigationController : MonoBehaviour
     [SerializeField] private Transform[] routePointsC;
     [SerializeField] private RoutePathRenderer routePathRenderer;
     [SerializeField] private bool alignRoutesToStartupView = true;
+    [SerializeField] private bool realignRoutesOnAButton = true;
+    [SerializeField] private OVRInput.Controller routeRealignController = OVRInput.Controller.RTouch;
+    [SerializeField] private OVRInput.Button routeRealignButton = OVRInput.Button.One;
     [SerializeField] private Transform routePointsRoot;
     [SerializeField] private float pointReachRadius = 0.35f;
     [SerializeField] private float routeDeviationThreshold = 2.5f;
@@ -284,6 +287,11 @@ public sealed class RouteNavigationController : MonoBehaviour
         if (!alignRoutesToStartupView || _routesAlignedToStartupView)
             return;
 
+        AlignRoutesToCurrentView();
+    }
+
+    private void AlignRoutesToCurrentView()
+    {
         if (userTransform == null && Camera.main != null)
             userTransform = Camera.main.transform;
         if (userTransform == null)
@@ -306,6 +314,28 @@ public sealed class RouteNavigationController : MonoBehaviour
 
         if (routePathRenderer != null)
             routePathRenderer.Refresh();
+
+        if (_navigationStarted && routePoints != null && routePoints.Length >= 2)
+        {
+            _totalRouteDistance = CalculateRouteDistance();
+            var remainingDistance = CalculateRemainingDistance(userTransform.position);
+            UpdateRemainingDistanceText(remainingDistance);
+            UpdateProgress(remainingDistance);
+            UpdateDirectionArrow(false);
+        }
+
+        Debug.Log("[RouteNavigationController] Route realigned to current view.");
+    }
+
+    private void HandleManualRouteRealignment()
+    {
+        if (!realignRoutesOnAButton)
+            return;
+
+        if (!OVRInput.GetDown(routeRealignButton, routeRealignController))
+            return;
+
+        AlignRoutesToCurrentView();
     }
 
     private void ResolveRoutePointsRootIfNeeded()
@@ -505,6 +535,8 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     private void Update()
     {
+        HandleManualRouteRealignment();
+
         if (!_navigationStarted)
         {
             UpdateRouteSelectionDemo();
