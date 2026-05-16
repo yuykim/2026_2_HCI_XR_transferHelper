@@ -200,8 +200,8 @@ public static class NavigationPrototypeBuilder
         lineRenderer.numCapVertices = 6;
         lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         lineRenderer.receiveShadows = false;
-        lineRenderer.startColor = new Color(0.1f, 0.95f, 1f, 1f);
-        lineRenderer.endColor = new Color(0.25f, 1f, 0.45f, 1f);
+        lineRenderer.startColor = new Color(0.55f, 1f, 1f, 1f);
+        lineRenderer.endColor = new Color(0.05f, 0.92f, 1f, 1f);
 
         var routeMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Material/RouteMat.mat");
         if (routeMaterial != null)
@@ -544,6 +544,11 @@ public static class NavigationPrototypeBuilder
             serializedObject.FindProperty("routePoints").GetArrayElementAtIndex(i).objectReferenceValue = routePoints[i];
         serializedObject.FindProperty("routeHeight").floatValue = RoutePointY;
         serializedObject.FindProperty("useRoutePointY").boolValue = true;
+        serializedObject.FindProperty("upcomingRouteStartColor").colorValue = new Color(0.55f, 1f, 1f, 1f);
+        serializedObject.FindProperty("upcomingRouteEndColor").colorValue = new Color(0.05f, 0.92f, 1f, 1f);
+        serializedObject.FindProperty("routeUnderlayColor").colorValue = new Color(0.05f, 0.55f, 1f, 0.32f);
+        serializedObject.FindProperty("routeUnderlayWidthMultiplier").floatValue = 2.8f;
+        serializedObject.FindProperty("traveledRouteColor").colorValue = new Color(0.02f, 0.36f, 0.16f, 0.95f);
         serializedObject.ApplyModifiedProperties();
         renderer.Refresh();
         EditorUtility.SetDirty(renderer);
@@ -570,15 +575,17 @@ public static class NavigationPrototypeBuilder
             serializedObject.FindProperty("routePointsC").GetArrayElementAtIndex(i).objectReferenceValue = routeOptions.RouteC[i];
         ConfigureRouteInstructions(serializedObject.FindProperty("routeInstructionsA"), routeOptions.RouteA, new[]
         {
-            new InstructionSeed(1, "앞으로 5m 이동하세요"),
-            new InstructionSeed(3, "오른쪽 복도로 이동하세요", true)
+            new InstructionSeed(1, "Continue straight for 5m."),
+            new InstructionSeed(3, "Turn right and continue.", true)
         });
         ConfigureRouteInstructions(serializedObject.FindProperty("routeInstructionsB"), routeOptions.RouteB, System.Array.Empty<InstructionSeed>());
         ConfigureRouteInstructions(serializedObject.FindProperty("routeInstructionsC"), routeOptions.RouteC, System.Array.Empty<InstructionSeed>());
         serializedObject.FindProperty("routePathRenderer").objectReferenceValue = routePathRenderer;
         serializedObject.FindProperty("alignRoutesToStartupView").boolValue = true;
         serializedObject.FindProperty("routePointsRoot").objectReferenceValue = routeOptions.RouteRoot;
-        serializedObject.FindProperty("routeDeviationThreshold").floatValue = 2.5f;
+        serializedObject.FindProperty("pointReachRadius").floatValue = 0.75f;
+        serializedObject.FindProperty("pointPassRadius").floatValue = 1.4f;
+        serializedObject.FindProperty("routeDeviationThreshold").floatValue = 1.4f;
         serializedObject.FindProperty("preferHandRay").boolValue = true;
         serializedObject.FindProperty("allowGazeRay").boolValue = false;
         serializedObject.FindProperty("allowControllerTriggerFallback").boolValue = true;
@@ -590,6 +597,13 @@ public static class NavigationPrototypeBuilder
         serializedObject.FindProperty("hudFollowDistance").floatValue = 1.25f;
         serializedObject.FindProperty("hudFollowVerticalOffset").floatValue = -0.08f;
         serializedObject.FindProperty("hudFollowSmooth").floatValue = 12f;
+        serializedObject.FindProperty("worldArrowHeightOffset").floatValue = -0.65f;
+        serializedObject.FindProperty("worldArrowNormalColor").colorValue = new Color(0.45f, 1f, 1f, 1f);
+        serializedObject.FindProperty("showAdditionalInfoWithBButton").boolValue = true;
+        serializedObject.FindProperty("demoNextTrainArrival").stringValue = "In 2 min";
+        serializedObject.FindProperty("demoNextTrainDetail").stringValue = "Line 2 - City Hall";
+        serializedObject.FindProperty("demoNearestExitName").stringValue = "Exit 3";
+        serializedObject.FindProperty("demoNearestExitDistance").stringValue = "24m";
         serializedObject.FindProperty("destinationSelectPanel").objectReferenceValue = hud.DestinationPanel;
         serializedObject.FindProperty("routeAButton").objectReferenceValue = hud.DestinationButtonA;
         serializedObject.FindProperty("routeBButton").objectReferenceValue = hud.DestinationButtonB;

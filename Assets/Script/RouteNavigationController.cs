@@ -2,6 +2,9 @@ using System;
 using System.Reflection;
 using TMPro;
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 using UnityEngine.UI;
 
 public sealed class RouteNavigationController : MonoBehaviour
@@ -21,8 +24,9 @@ public sealed class RouteNavigationController : MonoBehaviour
     [SerializeField] private RoutePathRenderer routePathRenderer;
     [SerializeField] private bool alignRoutesToStartupView = true;
     [SerializeField] private Transform routePointsRoot;
-    [SerializeField] private float pointReachRadius = 0.35f;
-    [SerializeField] private float routeDeviationThreshold = 2.5f;
+    [SerializeField] private float pointReachRadius = 0.75f;
+    [SerializeField] private float pointPassRadius = 1.4f;
+    [SerializeField] private float routeDeviationThreshold = 1.4f;
     [SerializeField] private float walkingSpeedMetersPerSecond = 1.2f;
 
     [Header("Route Instructions")]
@@ -56,11 +60,18 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     [Header("3D Direction Arrow")]
     [SerializeField] private float worldArrowDistance = 0.85f;
-    [SerializeField] private float worldArrowHeightOffset = -0.45f;
+    [SerializeField] private float worldArrowHeightOffset = -0.65f;
     [SerializeField] private float worldArrowSmooth = 14f;
     [SerializeField] private float worldArrowScale = 1f;
-    [SerializeField] private Color worldArrowNormalColor = new Color(1f, 0.9f, 0.12f, 1f);
+    [SerializeField] private Color worldArrowNormalColor = new Color(0.45f, 1f, 1f, 1f);
     [SerializeField] private Color worldArrowOffRouteColor = new Color(1f, 0.12f, 0.06f, 1f);
+
+    [Header("Additional Info UI")]
+    [SerializeField] private bool showAdditionalInfoWithBButton = true;
+    [SerializeField] private string demoNextTrainArrival = "In 2 min";
+    [SerializeField] private string demoNextTrainDetail = "Line 2 - City Hall";
+    [SerializeField] private string demoNearestExitName = "Exit 3";
+    [SerializeField] private string demoNearestExitDistance = "24m";
 
     [Header("Audio Feedback")]
     [SerializeField] private AudioSource navigationAudioSource;
@@ -141,12 +152,16 @@ public sealed class RouteNavigationController : MonoBehaviour
     private bool _arrivalSoundPlayed;
     private Transform _startupCalibrationFrame;
     private bool _startupCalibrationFrameDismissed;
+    private CanvasGroup _additionalInfoGroup;
+    private TMP_Text _currentTimeInfoText;
+    private TMP_Text _nextTrainInfoText;
+    private TMP_Text _nearestExitInfoText;
 
     [Serializable]
     public sealed class RouteInstructionPoint
     {
         public Transform point;
-        [TextArea(2, 4)] public string message = "앞으로 이동하세요";
+        [TextArea(2, 4)] public string message = "Continue forward.";
         public float triggerRadius = 1.0f;
         public bool showUntilExitRadius;
         public float displaySeconds = 3.0f;
@@ -187,6 +202,8 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     private void OnValidate()
     {
+        pointReachRadius = Mathf.Max(0.05f, pointReachRadius);
+        pointPassRadius = Mathf.Max(pointReachRadius, pointPassRadius);
         EnsureInstructionTemplates();
     }
 
@@ -218,7 +235,7 @@ public sealed class RouteNavigationController : MonoBehaviour
             new RouteInstructionPoint
             {
                 point = routePointsA[1],
-                    message = "앞으로 5m 이동하세요",
+                    message = "Continue straight for 5m.",
                     triggerRadius = 1f,
                     showUntilExitRadius = false,
                     displaySeconds = 3f,
@@ -227,7 +244,7 @@ public sealed class RouteNavigationController : MonoBehaviour
             new RouteInstructionPoint
             {
                 point = routePointsA[3],
-                    message = "오른쪽 복도로 이동하세요",
+                    message = "Turn right and continue.",
                     triggerRadius = 1f,
                     showUntilExitRadius = false,
                     displaySeconds = 3f,
@@ -242,6 +259,9 @@ public sealed class RouteNavigationController : MonoBehaviour
     {
         EnsureNavigationAudioSource();
         ConfigurePinchRouteSelection();
+        EnsureAdditionalInfoOverlay();
+        UpdateAdditionalInfoTexts();
+        SetAdditionalInfoVisible(false);
         SetRoutePreview(null);
         SetWarning(false);
         SetArrived(false);
@@ -319,7 +339,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         _routesAlignedToStartupView = true;
 
         if (routePathRenderer != null)
-            routePathRenderer.Refresh();
+            UpdateRoutePathProgress();
 
         if (_navigationStarted && routePoints != null && routePoints.Length >= 2)
         {
@@ -517,7 +537,155 @@ public sealed class RouteNavigationController : MonoBehaviour
             SetRect(progressText.rectTransform, new Vector2(0f, -42f), new Vector2(120f, 30f));
         }
 
+        EnsureAdditionalInfoOverlay();
+        SetAdditionalInfoVisible(_additionalInfoGroup != null && _additionalInfoGroup.alpha > 0.5f);
         SetNavigationStatsVisible(_navigationStarted);
+    }
+
+    private void UpdateAdditionalInfoOverlay()
+    {
+        if (!showAdditionalInfoWithBButton)
+        {
+            SetAdditionalInfoVisible(false);
+            return;
+        }
+
+        EnsureAdditionalInfoOverlay();
+        UpdateAdditionalInfoTexts();
+        SetAdditionalInfoVisible(IsAdditionalInfoButtonHeld());
+    }
+
+    private bool IsAdditionalInfoButtonHeld()
+    {
+        if (OVRInput.Get(OVRInput.Button.Two, OVRInput.Controller.RTouch))
+            return true;
+
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = Keyboard.current;
+        if (keyboard != null && keyboard.bKey.isPressed)
+            return true;
+#elif ENABLE_LEGACY_INPUT_MANAGER
+        if (Input.GetKey(KeyCode.B))
+            return true;
+#endif
+
+        return false;
+    }
+
+    private void EnsureAdditionalInfoOverlay()
+    {
+        var overlay = _additionalInfoGroup != null ? _additionalInfoGroup.transform as RectTransform : null;
+        if (overlay == null)
+        {
+            var hudObject = GameObject.Find("NavigationHUD");
+            var canvasRect = hudObject != null ? hudObject.transform as RectTransform : null;
+            if (canvasRect == null)
+                return;
+
+            overlay = canvasRect.Find("AdditionalInfoOverlay") as RectTransform;
+            if (overlay == null)
+            {
+                var overlayObject = new GameObject("AdditionalInfoOverlay", typeof(RectTransform), typeof(CanvasGroup));
+                overlay = overlayObject.GetComponent<RectTransform>();
+                overlay.SetParent(canvasRect, false);
+                SetStretch(overlay, 0f, 0f, 0f, 0f);
+            }
+
+            _additionalInfoGroup = GetOrAddComponent<CanvasGroup>(overlay.gameObject);
+        }
+
+        overlay.SetAsLastSibling();
+        _additionalInfoGroup.interactable = false;
+        _additionalInfoGroup.blocksRaycasts = false;
+
+        var timePanel = EnsureInfoPanel(overlay, "CurrentTimePanel", new Vector2(-300f, 214f), new Vector2(360f, 128f));
+        var trainPanel = EnsureInfoPanel(overlay, "NextTrainPanel", new Vector2(300f, 206f), new Vector2(420f, 156f));
+        var exitPanel = EnsureInfoPanel(overlay, "NearestExitPanel", new Vector2(300f, 36f), new Vector2(420f, 156f));
+
+        _currentTimeInfoText = EnsureInfoText(timePanel, "CurrentTimeText", 34f);
+        _nextTrainInfoText = EnsureInfoText(trainPanel, "NextTrainText", 30f);
+        _nearestExitInfoText = EnsureInfoText(exitPanel, "NearestExitText", 30f);
+    }
+
+    private static RectTransform EnsureInfoPanel(RectTransform parent, string name, Vector2 anchoredPosition, Vector2 size)
+    {
+        var panel = parent.Find(name) as RectTransform;
+        if (panel == null)
+        {
+            var panelObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+            panel = panelObject.GetComponent<RectTransform>();
+            panel.SetParent(parent, false);
+        }
+
+        SetRect(panel, anchoredPosition, size);
+        var image = GetOrAddComponent<Image>(panel.gameObject);
+        image.color = new Color(0.02f, 0.03f, 0.035f, 0.74f);
+        image.raycastTarget = false;
+        return panel;
+    }
+
+    private static TMP_Text EnsureInfoText(RectTransform parent, string name, float fontSize)
+    {
+        var text = parent.Find(name)?.GetComponent<TMP_Text>();
+        if (text == null)
+        {
+            var textObject = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
+            var rect = textObject.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            SetStretch(rect, 24f, 18f, 24f, 18f);
+            text = textObject.GetComponent<TextMeshProUGUI>();
+        }
+
+        text.fontSize = fontSize;
+        text.fontSizeMin = 18f;
+        text.fontSizeMax = fontSize;
+        text.enableAutoSizing = true;
+        text.enableWordWrapping = false;
+        text.alignment = TextAlignmentOptions.MidlineLeft;
+        text.color = Color.white;
+        text.richText = true;
+        text.raycastTarget = false;
+        return text;
+    }
+
+    private void UpdateAdditionalInfoTexts()
+    {
+        if (_currentTimeInfoText != null)
+        {
+            _currentTimeInfoText.text =
+                $"<size=20>CURRENT TIME</size>\n<size=44><b>{DateTime.Now:HH:mm}</b></size>";
+        }
+
+        if (_nextTrainInfoText != null)
+        {
+            _nextTrainInfoText.text =
+                $"<size=20>NEXT TRAIN</size>\n<size=44><color=#86E86A><b>{demoNextTrainArrival}</b></color></size>\n<size=22>{demoNextTrainDetail}</size>";
+        }
+
+        if (_nearestExitInfoText != null)
+        {
+            _nearestExitInfoText.text =
+                $"<size=20>NEAREST EXIT</size>\n<size=44><color=#86E86A><b>{demoNearestExitName}</b></color></size>\n<size=26>{demoNearestExitDistance}</size>";
+        }
+    }
+
+    private void SetAdditionalInfoVisible(bool visible)
+    {
+        if (_additionalInfoGroup == null)
+            return;
+
+        _additionalInfoGroup.alpha = visible ? 1f : 0f;
+        _additionalInfoGroup.interactable = false;
+        _additionalInfoGroup.blocksRaycasts = false;
+        _additionalInfoGroup.gameObject.SetActive(visible);
+    }
+
+    private static T GetOrAddComponent<T>(GameObject target) where T : Component
+    {
+        var component = target.GetComponent<T>();
+        if (component == null)
+            component = target.AddComponent<T>();
+        return component;
     }
 
     private static void SetButtonLayout(Button button, Vector2 anchoredPosition, Vector2 size, float labelSize)
@@ -593,6 +761,7 @@ public sealed class RouteNavigationController : MonoBehaviour
     {
         UpdateStartupCalibrationFrame();
         HandleManualRouteRealignment();
+        UpdateAdditionalInfoOverlay();
 
         if (!_navigationStarted)
         {
@@ -604,6 +773,7 @@ public sealed class RouteNavigationController : MonoBehaviour
             return;
 
         AdvanceRoutePointIfNeeded();
+        UpdateRoutePathProgress();
 
         var remainingDistance = CalculateRemainingDistance(userTransform.position);
         UpdateRemainingDistanceText(remainingDistance);
@@ -620,7 +790,7 @@ public sealed class RouteNavigationController : MonoBehaviour
             SetStatus(string.Empty);
 
         if (_targetIndex >= routePoints.Length - 1 &&
-            HorizontalDistance(userTransform.position, routePoints[_targetIndex].position) <= pointReachRadius)
+            HasReachedOrPassedRoutePoint(_targetIndex))
         {
             Arrive();
         }
@@ -679,6 +849,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         SetDirectionArrow(true, false, userTransform != null ? userTransform.forward : Vector3.forward);
 
         SetRoutePreview(routePoints);
+        UpdateRoutePathProgress();
     }
 
     private void ResetRouteSelection()
@@ -936,6 +1107,21 @@ public sealed class RouteNavigationController : MonoBehaviour
             return;
         routePathRenderer.SetRoutePoints(previewRoute ?? Array.Empty<Transform>());
         routePathRenderer.Refresh();
+    }
+
+    private void UpdateRoutePathProgress()
+    {
+        if (routePathRenderer == null)
+            return;
+
+        if (!_navigationStarted || _arrived || userTransform == null || routePoints == null || routePoints.Length < 2)
+        {
+            routePathRenderer.ClearProgress();
+            routePathRenderer.Refresh();
+            return;
+        }
+
+        routePathRenderer.SetProgress(_targetIndex, userTransform.position);
     }
 
     private bool TryGetHandRay(Component hand, Transform pointerPose, Transform handAnchor, Transform indexTip, out Ray ray)
@@ -1617,12 +1803,68 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     private void AdvanceRoutePointIfNeeded()
     {
-        while (_targetIndex < routePoints.Length - 1 &&
-               routePoints[_targetIndex] != null &&
-               HorizontalDistance(userTransform.position, routePoints[_targetIndex].position) <= pointReachRadius)
+        while (_targetIndex < routePoints.Length - 1 && HasReachedOrPassedRoutePoint(_targetIndex))
         {
             _targetIndex++;
         }
+    }
+
+    private bool HasReachedOrPassedRoutePoint(int pointIndex)
+    {
+        if (userTransform == null ||
+            routePoints == null ||
+            pointIndex <= 0 ||
+            pointIndex >= routePoints.Length ||
+            routePoints[pointIndex] == null)
+        {
+            return false;
+        }
+
+        var userPosition = userTransform.position;
+        var targetPosition = routePoints[pointIndex].position;
+        var reachRadius = Mathf.Max(0.05f, pointReachRadius);
+        var passRadius = Mathf.Max(reachRadius, pointPassRadius);
+
+        if (HorizontalDistance(userPosition, targetPosition) <= reachRadius)
+            return true;
+
+        var previousPoint = routePoints[pointIndex - 1];
+        if (previousPoint == null)
+            return false;
+
+        if (TryGetSegmentProgressXZ(
+                userPosition,
+                previousPoint.position,
+                targetPosition,
+                out var incomingProgress,
+                out var incomingLateralDistance,
+                out _))
+        {
+            if (incomingProgress >= 1f && incomingLateralDistance <= passRadius)
+                return true;
+
+            if (incomingProgress >= 0.92f &&
+                HorizontalDistance(userPosition, targetPosition) <= passRadius)
+            {
+                return true;
+            }
+        }
+
+        if (pointIndex >= routePoints.Length - 1 || routePoints[pointIndex + 1] == null)
+            return false;
+
+        if (!TryGetSegmentProgressXZ(
+                userPosition,
+                targetPosition,
+                routePoints[pointIndex + 1].position,
+                out var outgoingProgress,
+                out var outgoingLateralDistance,
+                out _))
+        {
+            return false;
+        }
+
+        return outgoingProgress > 0.02f && outgoingLateralDistance <= passRadius;
     }
 
     private void SetActiveRouteInstructions(string routeName)
@@ -1742,6 +1984,8 @@ public sealed class RouteNavigationController : MonoBehaviour
         PlayArrivalSound();
         UpdateRemainingDistanceText(0f);
         UpdateProgress(0f);
+        if (routePathRenderer != null && routePoints != null && routePoints.Length >= 2)
+            routePathRenderer.SetProgress(routePoints.Length - 1, routePoints[routePoints.Length - 1].position);
         SetDirectionArrow(false, false, Vector3.forward);
         SetStatus(string.Empty);
         SetStatusVisible(false);
@@ -1814,9 +2058,34 @@ public sealed class RouteNavigationController : MonoBehaviour
         if (routePoints == null || routePoints.Length < 2)
             return 0f;
 
-        var distance = HorizontalDistance(userPosition, routePoints[_targetIndex].position);
-        for (var i = _targetIndex; i < routePoints.Length - 1; i++)
+        var targetIndex = Mathf.Clamp(_targetIndex, 1, routePoints.Length - 1);
+        var distance = 0f;
+        var segmentStart = routePoints[targetIndex - 1];
+        var segmentEnd = routePoints[targetIndex];
+        if (segmentStart != null &&
+            segmentEnd != null &&
+            TryGetSegmentProgressXZ(
+                userPosition,
+                segmentStart.position,
+                segmentEnd.position,
+                out var progress,
+                out _,
+                out var segmentLength))
+        {
+            distance = segmentLength * Mathf.Clamp01(1f - progress);
+        }
+        else if (segmentEnd != null)
+        {
+            distance = HorizontalDistance(userPosition, segmentEnd.position);
+        }
+
+        for (var i = targetIndex; i < routePoints.Length - 1; i++)
+        {
+            if (routePoints[i] == null || routePoints[i + 1] == null)
+                continue;
+
             distance += HorizontalDistance(routePoints[i].position, routePoints[i + 1].position);
+        }
 
         return distance;
     }
@@ -2059,7 +2328,7 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     private static Material CreateWorldArrowMaterial()
     {
-        return CreateUnlitColorMaterial(new Color(1f, 0.9f, 0.12f, 1f));
+        return CreateUnlitColorMaterial(new Color(0.45f, 1f, 1f, 1f));
     }
 
     private static Material CreateUnlitColorMaterial(Color color, bool drawOnTop = false)
@@ -2156,6 +2425,35 @@ public sealed class RouteNavigationController : MonoBehaviour
         a.y = 0f;
         b.y = 0f;
         return Vector3.Distance(a, b);
+    }
+
+    private static bool TryGetSegmentProgressXZ(
+        Vector3 point,
+        Vector3 a,
+        Vector3 b,
+        out float progress,
+        out float lateralDistance,
+        out float segmentLength)
+    {
+        var p = new Vector2(point.x, point.z);
+        var start = new Vector2(a.x, a.z);
+        var end = new Vector2(b.x, b.z);
+        var segment = end - start;
+        var segmentSqrLength = segment.sqrMagnitude;
+
+        if (segmentSqrLength <= Mathf.Epsilon)
+        {
+            progress = 0f;
+            lateralDistance = Vector2.Distance(p, start);
+            segmentLength = 0f;
+            return false;
+        }
+
+        progress = Vector2.Dot(p - start, segment) / segmentSqrLength;
+        var closest = start + segment * Mathf.Clamp01(progress);
+        lateralDistance = Vector2.Distance(p, closest);
+        segmentLength = Mathf.Sqrt(segmentSqrLength);
+        return true;
     }
 
     private static float DistancePointToSegmentXZ(Vector3 point, Vector3 a, Vector3 b)
