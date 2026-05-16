@@ -41,7 +41,6 @@ public sealed class RouteNavigationController : MonoBehaviour
     [SerializeField] private float selectionRayStartOffset = 0.08f;
     [SerializeField] private bool previewRoutesBeforeSelection = false;
     [SerializeField] private float routePreviewIntervalSeconds = 2.0f;
-    [SerializeField] private bool followSelectionPanelToUser = false;
     [SerializeField] private float hudFollowDistance = 1.25f;
     [SerializeField] private float hudFollowVerticalOffset = -0.08f;
     [SerializeField] private float hudFollowSmooth = 12f;
@@ -130,6 +129,7 @@ public sealed class RouteNavigationController : MonoBehaviour
     private int _nextInstructionIndex;
     private string _activeInstructionMessage;
     private float _activeInstructionUntil;
+    private bool _waitingInstructionExitRadius;
     private bool _wasOffRoute;
     private float _nextOffRouteSoundTime;
     private bool _arrivalSoundPlayed;
@@ -140,6 +140,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         public Transform point;
         [TextArea(2, 4)] public string message = "앞으로 이동하세요";
         public float triggerRadius = 1.0f;
+        public bool showUntilExitRadius;
         public float displaySeconds = 3.0f;
         public bool requireLookDirection;
         public Transform lookTarget;
@@ -209,19 +210,21 @@ public sealed class RouteNavigationController : MonoBehaviour
             new RouteInstructionPoint
             {
                 point = routePointsA[1],
-                message = "앞으로 5m 이동하세요",
-                triggerRadius = 1f,
-                displaySeconds = 3f,
-                requireLookDirection = false
-            },
+                    message = "앞으로 5m 이동하세요",
+                    triggerRadius = 1f,
+                    showUntilExitRadius = false,
+                    displaySeconds = 3f,
+                    requireLookDirection = false
+                },
             new RouteInstructionPoint
             {
                 point = routePointsA[3],
-                message = "오른쪽 복도로 이동하세요",
-                triggerRadius = 1f,
-                displaySeconds = 3f,
-                requireLookDirection = true,
-                lookTarget = routePointsA[4],
+                    message = "오른쪽 복도로 이동하세요",
+                    triggerRadius = 1f,
+                    showUntilExitRadius = false,
+                    displaySeconds = 3f,
+                    requireLookDirection = true,
+                    lookTarget = routePointsA[4],
                 requiredLookAngle = 45f
             }
         };
@@ -237,7 +240,8 @@ public sealed class RouteNavigationController : MonoBehaviour
         if (destinationSelectPanel != null)
             destinationSelectPanel.SetActive(true);
         SetNavigationStatsVisible(false);
-        SetStatus("Use hand/controller ray on A/B/C, then pinch or trigger.");
+        SetStatus(string.Empty);
+        SetStatusVisible(false);
         UpdateRemainingDistanceText(0f);
         UpdateProgress(0f);
         SetDirectionArrow(false, false, Vector3.forward);
@@ -254,7 +258,6 @@ public sealed class RouteNavigationController : MonoBehaviour
         if (hudObject == null)
             return;
 
-        followSelectionPanelToUser = false;
         allowGazeRay = false;
         RemovePalmHud();
         EnsureHeadLockedHudFollower(hudObject);
@@ -388,11 +391,12 @@ public sealed class RouteNavigationController : MonoBehaviour
         {
             statusText.transform.parent.gameObject.SetActive(true);
             var panel = statusText.transform.parent as RectTransform;
-            SetRect(panel, new Vector2(0f, -178f), new Vector2(960f, 64f));
-            statusText.fontSize = 23f;
+            SetRect(panel, new Vector2(0f, 58f), new Vector2(1120f, 106f));
+            statusText.fontSize = 36f;
+            statusText.fontStyle = FontStyles.Bold;
             statusText.alignment = TextAlignmentOptions.Center;
-            statusText.color = new Color(1f, 0.96f, 0.72f, 1f);
-            SetStretch(statusText.rectTransform, 18f, 8f, 18f, 8f);
+            statusText.color = new Color(0.82f, 0.96f, 1f, 1f);
+            SetStretch(statusText.rectTransform, 24f, 12f, 24f, 12f);
         }
 
         if (warningText != null)
@@ -575,6 +579,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         if (destinationSelectPanel != null)
             destinationSelectPanel.SetActive(false);
         SetNavigationStatsVisible(true);
+        SetStatusVisible(true);
         SetSelectionRayVisible(false);
         SetEyeWarningVisible(false);
 
@@ -600,7 +605,7 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     private void UpdateRouteSelectionDemo()
     {
-        UpdateSelectionPanelFollow();
+        SetStatusVisible(false);
 
         if (previewRoutesBeforeSelection)
             UpdateCyclicRoutePreview();
@@ -615,8 +620,6 @@ public sealed class RouteNavigationController : MonoBehaviour
         {
             _currentPinchTarget = RouteChoice.None;
             ApplyRouteButtonColors();
-            var remaining = Mathf.CeilToInt(_selectionEnabledTime - Time.time);
-            SetStatus($"Get ready: aim hand/controller ray, then pinch or trigger ({remaining})");
             return;
         }
 
@@ -627,27 +630,16 @@ public sealed class RouteNavigationController : MonoBehaviour
             _currentPinchTarget = RouteChoice.None;
             _wasPinching = IsPinchingNow();
             ApplyRouteButtonColors();
-            SetStatus("Use hand/controller ray on A/B/C, then pinch or trigger.");
             return;
         }
 
         _currentPinchTarget = choice;
         ApplyRouteButtonColors();
-        SetStatus($"Route {choice} ready. Pinch or trigger to select. ({_currentSelectionSource})");
 
         if (!TryConsumePinchDown())
-        {
-            SetStatus($"Route {choice} ready. {_lastPinchStatus}");
             return;
-        }
 
         StartRouteChoice(choice);
-    }
-
-    private void UpdateSelectionPanelFollow()
-    {
-        // Kept for older serialized scenes. The whole NavigationHUD now follows the camera.
-        followSelectionPanelToUser = false;
     }
 
     private void UpdateCyclicRoutePreview()
@@ -1564,10 +1556,30 @@ public sealed class RouteNavigationController : MonoBehaviour
         _nextInstructionIndex = 0;
         _activeInstructionMessage = null;
         _activeInstructionUntil = 0f;
+        _waitingInstructionExitRadius = false;
     }
 
     private bool TryUpdateRouteInstructionStatus()
     {
+        if (_waitingInstructionExitRadius &&
+            _nextInstructionIndex < _activeRouteInstructions.Length)
+        {
+            var waitingInstruction = _activeRouteInstructions[_nextInstructionIndex];
+            if (waitingInstruction != null && waitingInstruction.point != null)
+            {
+                var waitRadius = Mathf.Max(0.05f, waitingInstruction.triggerRadius);
+                if (HorizontalDistance(userTransform.position, waitingInstruction.point.position) <= waitRadius)
+                {
+                    SetStatus(waitingInstruction.message);
+                    return true;
+                }
+            }
+
+            _waitingInstructionExitRadius = false;
+            _nextInstructionIndex++;
+            _activeInstructionMessage = null;
+        }
+
         if (!string.IsNullOrEmpty(_activeInstructionMessage) && Time.time < _activeInstructionUntil)
         {
             SetStatus(_activeInstructionMessage);
@@ -1588,6 +1600,13 @@ public sealed class RouteNavigationController : MonoBehaviour
             var radius = Mathf.Max(0.05f, instruction.triggerRadius);
             if (HorizontalDistance(userTransform.position, instruction.point.position) > radius)
                 return false;
+
+            if (instruction.showUntilExitRadius)
+            {
+                _waitingInstructionExitRadius = true;
+                SetStatus(instruction.message);
+                return true;
+            }
 
             _activeInstructionMessage = instruction.message;
             if (instruction.requireLookDirection && !IsLookingAtInstructionDirection(instruction))
@@ -1755,6 +1774,12 @@ public sealed class RouteNavigationController : MonoBehaviour
     {
         if (statusText != null)
             statusText.text = message;
+    }
+
+    private void SetStatusVisible(bool visible)
+    {
+        if (statusText != null && statusText.transform.parent != null)
+            statusText.transform.parent.gameObject.SetActive(visible);
     }
 
     private void SetWarning(bool active)

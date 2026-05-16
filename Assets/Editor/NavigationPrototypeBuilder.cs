@@ -261,11 +261,12 @@ public static class NavigationPrototypeBuilder
         var versionText = CreateText("VersionText", remainingPanel, UiVersionLabel, 16, TextAlignmentOptions.MidlineLeft);
         versionText.gameObject.SetActive(false);
 
-        var statusPanel = CreatePanel("StatusPanel", canvasRect, new Vector2(0f, -178f), new Vector2(960f, 64f),
+        var statusPanel = CreatePanel("StatusPanel", canvasRect, new Vector2(0f, 58f), new Vector2(1120f, 106f),
             new Color(0f, 0f, 0f, 0f));
-        var statusText = CreateText("StatusText", statusPanel, "Ready.", 23, TextAlignmentOptions.Center);
-        statusText.color = new Color(1f, 0.96f, 0.72f, 1f);
-        Stretch(statusText.rectTransform, 18f, 8f, 18f, 8f);
+        var statusText = CreateText("StatusText", statusPanel, "Ready.", 36, TextAlignmentOptions.Center);
+        statusText.color = new Color(0.82f, 0.96f, 1f, 1f);
+        statusText.fontStyle = FontStyles.Bold;
+        Stretch(statusText.rectTransform, 24f, 12f, 24f, 12f);
 
         var arrowText = CreateText("DirectionArrow", canvasRect, "\u2191", 96, TextAlignmentOptions.Center);
         arrowText.enableAutoSizing = false;
@@ -586,7 +587,6 @@ public static class NavigationPrototypeBuilder
         serializedObject.FindProperty("selectionHitPadding").floatValue = 80f;
         serializedObject.FindProperty("gazeScreenFallbackMaxPixels").floatValue = 520f;
         serializedObject.FindProperty("showSelectionRay").boolValue = true;
-        serializedObject.FindProperty("followSelectionPanelToUser").boolValue = false;
         serializedObject.FindProperty("hudFollowDistance").floatValue = 1.25f;
         serializedObject.FindProperty("hudFollowVerticalOffset").floatValue = -0.08f;
         serializedObject.FindProperty("hudFollowSmooth").floatValue = 12f;
@@ -655,6 +655,7 @@ public static class NavigationPrototypeBuilder
             element.FindPropertyRelative("point").objectReferenceValue = route[routeIndex];
             element.FindPropertyRelative("message").stringValue = seed.Message;
             element.FindPropertyRelative("triggerRadius").floatValue = 1.0f;
+            element.FindPropertyRelative("showUntilExitRadius").boolValue = false;
             element.FindPropertyRelative("displaySeconds").floatValue = 3.0f;
             element.FindPropertyRelative("requireLookDirection").boolValue = seed.RequireLookDirection;
             element.FindPropertyRelative("lookTarget").objectReferenceValue =
