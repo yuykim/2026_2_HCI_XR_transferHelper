@@ -14,11 +14,29 @@ public static class NavigationPrototypeBuilder
     private const float RoutePointY = 0.10f;
     private const string TargetScenePath = "Assets/Scenes/YUYKIM2.unity";
     private const string UiVersionLabel = "v2026.05.01";
+    private const string OffRouteSoundPath = "Assets/sound/off_the_course_sound.mp3";
+    private const string ArrivalSoundPath = "Assets/sound/arrive sound.mp3";
 
     [MenuItem("Tools/XR Transfer Helper/Create Navigation Prototype")]
     public static void CreateNavigationPrototype()
     {
         CreateNavigationPrototypeInCurrentScene();
+    }
+
+    [MenuItem("Tools/XR Transfer Helper/Apply Navigation Sounds")]
+    public static void ApplyNavigationSounds()
+    {
+        var controller = Object.FindObjectOfType<RouteNavigationController>();
+        if (controller == null)
+        {
+            Debug.LogError("RouteNavigationController was not found in the current scene.");
+            return;
+        }
+
+        AssignNavigationSounds(controller);
+        EditorUtility.SetDirty(controller);
+        EditorSceneManager.MarkSceneDirty(controller.gameObject.scene);
+        Debug.Log("Navigation sounds assigned.");
     }
 
     [MenuItem("Tools/XR Transfer Helper/Create YUYKIM2 VR UI Scene")]
@@ -81,7 +99,7 @@ public static class NavigationPrototypeBuilder
         var navigationController = GetOrAddComponent<RouteNavigationController>(navigationRoot.gameObject);
         var hud = CreateHud(camera);
         AssignNavigationController(navigationController, camera, routeOptions, routePathRenderer, hud);
-        CreatePalmHud(camera, hud);
+        DeleteIfExists("PalmHUD");
 
         Selection.activeGameObject = navigationRoot.gameObject;
         EditorUtility.SetDirty(navigationRoot.gameObject);
@@ -243,11 +261,12 @@ public static class NavigationPrototypeBuilder
         var versionText = CreateText("VersionText", remainingPanel, UiVersionLabel, 16, TextAlignmentOptions.MidlineLeft);
         versionText.gameObject.SetActive(false);
 
-        var statusPanel = CreatePanel("StatusPanel", canvasRect, new Vector2(0f, -178f), new Vector2(960f, 64f),
+        var statusPanel = CreatePanel("StatusPanel", canvasRect, new Vector2(0f, 58f), new Vector2(1120f, 106f),
             new Color(0f, 0f, 0f, 0f));
-        var statusText = CreateText("StatusText", statusPanel, "Ready.", 23, TextAlignmentOptions.Center);
-        statusText.color = new Color(1f, 0.96f, 0.72f, 1f);
-        Stretch(statusText.rectTransform, 18f, 8f, 18f, 8f);
+        var statusText = CreateText("StatusText", statusPanel, "Ready.", 36, TextAlignmentOptions.Center);
+        statusText.color = new Color(0.82f, 0.96f, 1f, 1f);
+        statusText.fontStyle = FontStyles.Bold;
+        Stretch(statusText.rectTransform, 24f, 12f, 24f, 12f);
 
         var arrowText = CreateText("DirectionArrow", canvasRect, "\u2191", 96, TextAlignmentOptions.Center);
         arrowText.enableAutoSizing = false;
@@ -311,68 +330,6 @@ public static class NavigationPrototypeBuilder
             DirectionArrowRect = arrowText.rectTransform,
             ProgressSlider = progressSlider
         };
-    }
-
-    private static void CreatePalmHud(Camera camera, HudReferences sourceHud)
-    {
-        var palmHudObject = GetOrCreateUi("PalmHUD", null);
-        var palmCanvas = GetOrAddComponent<Canvas>(palmHudObject);
-        palmCanvas.renderMode = RenderMode.WorldSpace;
-        palmCanvas.worldCamera = camera;
-        GetOrAddComponent<CanvasScaler>(palmHudObject).dynamicPixelsPerUnit = 20f;
-        GetOrAddComponent<GraphicRaycaster>(palmHudObject).enabled = false;
-
-        var rect = palmHudObject.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(500f, 280f);
-        palmHudObject.transform.localScale = Vector3.one * 0.001f;
-        if (camera != null)
-            palmHudObject.transform.position = camera.transform.position + camera.transform.forward * 0.6f;
-
-        var panel = CreatePanel("PalmPanel", rect, Vector2.zero, new Vector2(460f, 240f), new Color(0.02f, 0.05f, 0.08f, 0.85f));
-        var heading = CreateText("PalmHeadingText", panel, "Ready.", 22, TextAlignmentOptions.Center);
-        heading.color = new Color(1f, 0.96f, 0.72f, 1f);
-        heading.fontStyle = FontStyles.Bold;
-        heading.rectTransform.anchorMin = new Vector2(0.5f, 0.8f);
-        heading.rectTransform.anchorMax = new Vector2(0.5f, 0.8f);
-        heading.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        heading.rectTransform.sizeDelta = new Vector2(420f, 42f);
-        heading.rectTransform.anchoredPosition = Vector2.zero;
-
-        var remaining = CreateText("PalmRemainingText", panel, "To TRAIN: 0m", 34, TextAlignmentOptions.Center);
-        remaining.fontStyle = FontStyles.Bold;
-        remaining.rectTransform.anchorMin = new Vector2(0.5f, 0.56f);
-        remaining.rectTransform.anchorMax = new Vector2(0.5f, 0.56f);
-        remaining.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        remaining.rectTransform.sizeDelta = new Vector2(420f, 60f);
-        remaining.rectTransform.anchoredPosition = Vector2.zero;
-
-        var eta = CreateText("PalmEtaText", panel, "Arrival: < 1min", 24, TextAlignmentOptions.Center);
-        eta.color = new Color(0.95f, 0.97f, 1f, 0.95f);
-        eta.rectTransform.anchorMin = new Vector2(0.5f, 0.34f);
-        eta.rectTransform.anchorMax = new Vector2(0.5f, 0.34f);
-        eta.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        eta.rectTransform.sizeDelta = new Vector2(420f, 42f);
-        eta.rectTransform.anchoredPosition = Vector2.zero;
-
-        var version = CreateText("PalmVersionText", panel, UiVersionLabel, 16, TextAlignmentOptions.Center);
-        version.color = new Color(1f, 1f, 1f, 0.72f);
-        version.rectTransform.anchorMin = new Vector2(0.5f, 0.15f);
-        version.rectTransform.anchorMax = new Vector2(0.5f, 0.15f);
-        version.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        version.rectTransform.sizeDelta = new Vector2(320f, 24f);
-        version.rectTransform.anchoredPosition = Vector2.zero;
-
-        var follower = GetOrAddComponent<PalmHudFollower>(palmHudObject);
-        follower.SetCamera(camera != null ? camera.transform : null);
-
-        var mirror = GetOrAddComponent<RouteHudMirror>(palmHudObject);
-        mirror.SetSources(
-            sourceHud.RemainingDistanceText,
-            sourceHud.StatusText,
-            sourceHud.EtaText,
-            remaining,
-            heading,
-            eta);
     }
 
     private static Slider CreateProgressSlider(RectTransform parent)
@@ -458,6 +415,8 @@ public static class NavigationPrototypeBuilder
         var rect = CreatePanel(name, parent, anchoredPosition, size, new Color(0.04f, 0.42f, 0.9f, 0.95f));
         rect.GetComponent<Image>().raycastTarget = true;
         var button = GetOrAddComponent<Button>(rect.gameObject);
+        button.transition = Selectable.Transition.None;
+        button.targetGraphic = rect.GetComponent<Image>();
         var labelText = CreateText("Label", rect, label, 40, TextAlignmentOptions.Center);
         labelText.fontStyle = FontStyles.Bold;
         Stretch(labelText.rectTransform, 8f, 8f, 8f, 8f);
@@ -609,6 +568,13 @@ public static class NavigationPrototypeBuilder
         serializedObject.FindProperty("routePointsC").arraySize = routeOptions.RouteC.Length;
         for (var i = 0; i < routeOptions.RouteC.Length; i++)
             serializedObject.FindProperty("routePointsC").GetArrayElementAtIndex(i).objectReferenceValue = routeOptions.RouteC[i];
+        ConfigureRouteInstructions(serializedObject.FindProperty("routeInstructionsA"), routeOptions.RouteA, new[]
+        {
+            new InstructionSeed(1, "앞으로 5m 이동하세요"),
+            new InstructionSeed(3, "오른쪽 복도로 이동하세요", true)
+        });
+        ConfigureRouteInstructions(serializedObject.FindProperty("routeInstructionsB"), routeOptions.RouteB, System.Array.Empty<InstructionSeed>());
+        ConfigureRouteInstructions(serializedObject.FindProperty("routeInstructionsC"), routeOptions.RouteC, System.Array.Empty<InstructionSeed>());
         serializedObject.FindProperty("routePathRenderer").objectReferenceValue = routePathRenderer;
         serializedObject.FindProperty("alignRoutesToStartupView").boolValue = true;
         serializedObject.FindProperty("routePointsRoot").objectReferenceValue = routeOptions.RouteRoot;
@@ -618,10 +584,9 @@ public static class NavigationPrototypeBuilder
         serializedObject.FindProperty("allowControllerTriggerFallback").boolValue = true;
         serializedObject.FindProperty("allowControllerRay").boolValue = true;
         serializedObject.FindProperty("maxSelectionRayDistance").floatValue = 12f;
-        serializedObject.FindProperty("selectionHitPadding").floatValue = 220f;
+        serializedObject.FindProperty("selectionHitPadding").floatValue = 80f;
         serializedObject.FindProperty("gazeScreenFallbackMaxPixels").floatValue = 520f;
         serializedObject.FindProperty("showSelectionRay").boolValue = true;
-        serializedObject.FindProperty("followSelectionPanelToUser").boolValue = false;
         serializedObject.FindProperty("hudFollowDistance").floatValue = 1.25f;
         serializedObject.FindProperty("hudFollowVerticalOffset").floatValue = -0.08f;
         serializedObject.FindProperty("hudFollowSmooth").floatValue = 12f;
@@ -640,6 +605,7 @@ public static class NavigationPrototypeBuilder
         serializedObject.FindProperty("progressSlider").objectReferenceValue = hud.ProgressSlider;
         serializedObject.FindProperty("warningGroup").objectReferenceValue = hud.WarningGroup;
         serializedObject.FindProperty("arrivalGroup").objectReferenceValue = hud.ArrivalGroup;
+        AssignNavigationSounds(serializedObject, controller);
         serializedObject.ApplyModifiedProperties();
 
         ConfigureRouteButton(hud.DestinationButtonA, controller.StartRouteA);
@@ -651,8 +617,58 @@ public static class NavigationPrototypeBuilder
         EditorUtility.SetDirty(hud.DestinationButtonC);
     }
 
+    private static void AssignNavigationSounds(RouteNavigationController controller)
+    {
+        var serializedObject = new SerializedObject(controller);
+        AssignNavigationSounds(serializedObject, controller);
+        serializedObject.ApplyModifiedProperties();
+    }
+
+    private static void AssignNavigationSounds(SerializedObject serializedObject, RouteNavigationController controller)
+    {
+        var audioSource = controller.GetComponent<AudioSource>();
+        if (audioSource == null)
+            audioSource = Undo.AddComponent<AudioSource>(controller.gameObject);
+
+        audioSource.playOnAwake = false;
+        audioSource.loop = false;
+        audioSource.spatialBlend = 0f;
+
+        serializedObject.FindProperty("navigationAudioSource").objectReferenceValue = audioSource;
+        serializedObject.FindProperty("offRouteWarningClip").objectReferenceValue =
+            AssetDatabase.LoadAssetAtPath<AudioClip>(OffRouteSoundPath);
+        serializedObject.FindProperty("arrivalClip").objectReferenceValue =
+            AssetDatabase.LoadAssetAtPath<AudioClip>(ArrivalSoundPath);
+        serializedObject.FindProperty("offRouteSoundCooldownSeconds").floatValue = 2.5f;
+        serializedObject.FindProperty("navigationSoundVolume").floatValue = 1f;
+        EditorUtility.SetDirty(audioSource);
+    }
+
+    private static void ConfigureRouteInstructions(SerializedProperty instructionsProperty, Transform[] route, InstructionSeed[] seeds)
+    {
+        instructionsProperty.arraySize = seeds.Length;
+        for (var i = 0; i < seeds.Length; i++)
+        {
+            var seed = seeds[i];
+            var routeIndex = Mathf.Clamp(seed.RouteIndex, 0, route.Length - 1);
+            var element = instructionsProperty.GetArrayElementAtIndex(i);
+            element.FindPropertyRelative("point").objectReferenceValue = route[routeIndex];
+            element.FindPropertyRelative("message").stringValue = seed.Message;
+            element.FindPropertyRelative("triggerRadius").floatValue = 1.0f;
+            element.FindPropertyRelative("showUntilExitRadius").boolValue = false;
+            element.FindPropertyRelative("displaySeconds").floatValue = 3.0f;
+            element.FindPropertyRelative("requireLookDirection").boolValue = seed.RequireLookDirection;
+            element.FindPropertyRelative("lookTarget").objectReferenceValue =
+                seed.RequireLookDirection && routeIndex < route.Length - 1 ? route[routeIndex + 1] : null;
+            element.FindPropertyRelative("localLookDirection").vector3Value = Vector3.forward;
+            element.FindPropertyRelative("requiredLookAngle").floatValue = 45f;
+        }
+    }
+
     private static void ConfigureRouteButton(Button button, UnityAction action)
     {
+        button.transition = Selectable.Transition.None;
+        button.targetGraphic = button.GetComponent<Image>();
         button.onClick.RemoveAllListeners();
         while (button.onClick.GetPersistentEventCount() > 0)
             UnityEventTools.RemovePersistentListener(button.onClick, 0);
@@ -684,6 +700,20 @@ public static class NavigationPrototypeBuilder
         public Transform[] RouteA;
         public Transform[] RouteB;
         public Transform[] RouteC;
+    }
+
+    private struct InstructionSeed
+    {
+        public int RouteIndex;
+        public string Message;
+        public bool RequireLookDirection;
+
+        public InstructionSeed(int routeIndex, string message, bool requireLookDirection = false)
+        {
+            RouteIndex = routeIndex;
+            Message = message;
+            RequireLookDirection = requireLookDirection;
+        }
     }
 
     private static T GetOrAddComponent<T>(GameObject gameObject) where T : Component
