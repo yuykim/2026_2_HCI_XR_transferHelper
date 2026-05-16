@@ -6,6 +6,12 @@ using UnityEngine.UI;
 
 public sealed class RouteNavigationController : MonoBehaviour
 {
+    private const bool ShowStartupCalibrationFrame = true;
+    private const float StartupCalibrationFrameDistance = 1.1f;
+    private const float StartupCalibrationFrameSize = 0.28f;
+    private const float StartupCalibrationFrameLineWidth = 0.008f;
+    private static readonly Color StartupCalibrationFrameColor = new Color(0f, 0.95f, 1f, 1f);
+
     [Header("Route")]
     [SerializeField] private Transform userTransform;
     [SerializeField] private Transform[] routePoints;
@@ -133,6 +139,8 @@ public sealed class RouteNavigationController : MonoBehaviour
     private bool _wasOffRoute;
     private float _nextOffRouteSoundTime;
     private bool _arrivalSoundPlayed;
+    private Transform _startupCalibrationFrame;
+    private bool _startupCalibrationFrameDismissed;
 
     [Serializable]
     public sealed class RouteInstructionPoint
@@ -247,6 +255,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         SetDirectionArrow(false, false, Vector3.forward);
         SetSelectionRayVisible(false);
         ResetRouteSelection();
+        EnsureStartupCalibrationFrame();
     }
 
     private void ConfigurePinchRouteSelection()
@@ -330,6 +339,59 @@ public sealed class RouteNavigationController : MonoBehaviour
             return;
 
         AlignRoutesToCurrentView();
+        HideStartupCalibrationFrame();
+    }
+
+    private void UpdateStartupCalibrationFrame()
+    {
+        if (!ShowStartupCalibrationFrame || _startupCalibrationFrameDismissed || _navigationStarted)
+            return;
+
+        EnsureStartupCalibrationFrame();
+    }
+
+    private void EnsureStartupCalibrationFrame()
+    {
+        if (!ShowStartupCalibrationFrame || _startupCalibrationFrameDismissed)
+            return;
+
+        if (userTransform == null && Camera.main != null)
+            userTransform = Camera.main.transform;
+        if (userTransform == null || _startupCalibrationFrame != null)
+            return;
+
+        var frameObject = new GameObject("StartupWallCalibrationFrame");
+        frameObject.transform.SetParent(userTransform, false);
+        frameObject.transform.localPosition = new Vector3(0f, 0f, Mathf.Max(0.1f, StartupCalibrationFrameDistance));
+        frameObject.transform.localRotation = Quaternion.identity;
+        frameObject.transform.localScale = Vector3.one;
+
+        var lineRenderer = frameObject.AddComponent<LineRenderer>();
+        lineRenderer.useWorldSpace = false;
+        lineRenderer.loop = true;
+        lineRenderer.positionCount = 4;
+        lineRenderer.widthMultiplier = Mathf.Max(0.002f, StartupCalibrationFrameLineWidth);
+        lineRenderer.numCornerVertices = 4;
+        lineRenderer.numCapVertices = 4;
+        lineRenderer.alignment = LineAlignment.View;
+        lineRenderer.material = CreateUnlitColorMaterial(StartupCalibrationFrameColor, true);
+        lineRenderer.sortingOrder = 1000;
+
+        var halfSize = Mathf.Max(0.05f, StartupCalibrationFrameSize) * 0.5f;
+        lineRenderer.SetPosition(0, new Vector3(-halfSize, halfSize, 0f));
+        lineRenderer.SetPosition(1, new Vector3(halfSize, halfSize, 0f));
+        lineRenderer.SetPosition(2, new Vector3(halfSize, -halfSize, 0f));
+        lineRenderer.SetPosition(3, new Vector3(-halfSize, -halfSize, 0f));
+
+        _startupCalibrationFrame = frameObject.transform;
+    }
+
+    private void HideStartupCalibrationFrame()
+    {
+        _startupCalibrationFrameDismissed = true;
+
+        if (_startupCalibrationFrame != null)
+            _startupCalibrationFrame.gameObject.SetActive(false);
     }
 
     private void ResolveRoutePointsRootIfNeeded()
@@ -529,6 +591,7 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     private void Update()
     {
+        UpdateStartupCalibrationFrame();
         HandleManualRouteRealignment();
 
         if (!_navigationStarted)
@@ -593,6 +656,7 @@ public sealed class RouteNavigationController : MonoBehaviour
         }
 
         AlignRoutesToStartupViewIfNeeded();
+        HideStartupCalibrationFrame();
         _navigationStarted = true;
         _arrived = false;
         _targetIndex = 1;
@@ -1976,28 +2040,16 @@ public sealed class RouteNavigationController : MonoBehaviour
 
         var material = CreateWorldArrowMaterial();
 
-        var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        body.name = "Body";
-        body.transform.SetParent(arrowRoot.transform, false);
-        body.transform.localPosition = new Vector3(0f, 0f, -0.08f);
-        body.transform.localScale = new Vector3(0.08f, 0.035f, 0.36f);
+        var arrow = new GameObject("ArrowMesh");
+        arrow.transform.SetParent(arrowRoot.transform, false);
+        arrow.transform.localPosition = Vector3.zero;
+        arrow.transform.localRotation = Quaternion.identity;
 
-        var bodyCollider = body.GetComponent<Collider>();
-        if (bodyCollider != null)
-            Destroy(bodyCollider);
+        var meshFilter = arrow.AddComponent<MeshFilter>();
+        meshFilter.sharedMesh = CreateDirectionArrowMesh();
 
-        var bodyRenderer = body.GetComponent<Renderer>();
-        if (bodyRenderer != null)
-            bodyRenderer.sharedMaterial = material;
-
-        var head = new GameObject("Head");
-        head.transform.SetParent(arrowRoot.transform, false);
-        head.transform.localPosition = new Vector3(0f, 0f, 0.16f);
-        head.transform.localRotation = Quaternion.identity;
-        var meshFilter = head.AddComponent<MeshFilter>();
-        meshFilter.sharedMesh = CreateArrowHeadMesh();
-        var headRenderer = head.AddComponent<MeshRenderer>();
-        headRenderer.sharedMaterial = material;
+        var meshRenderer = arrow.AddComponent<MeshRenderer>();
+        meshRenderer.sharedMaterial = material;
 
         _worldDirectionArrow = arrowRoot.transform;
         _worldDirectionArrowRenderers = arrowRoot.GetComponentsInChildren<Renderer>(true);
@@ -2006,44 +2058,72 @@ public sealed class RouteNavigationController : MonoBehaviour
 
     private static Material CreateWorldArrowMaterial()
     {
+        return CreateUnlitColorMaterial(new Color(1f, 0.9f, 0.12f, 1f));
+    }
+
+    private static Material CreateUnlitColorMaterial(Color color, bool drawOnTop = false)
+    {
         var shader = Shader.Find("Unlit/Color");
         if (shader == null)
             shader = Shader.Find("Sprites/Default");
 
         var material = shader != null ? new Material(shader) : new Material(Shader.Find("Standard"));
-        material.color = new Color(1f, 0.9f, 0.12f, 1f);
+        material.color = color;
+        if (drawOnTop)
+        {
+            material.renderQueue = 5000;
+            if (material.HasProperty("_ZTest"))
+                material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+        }
+
         return material;
     }
 
-    private static Mesh CreateArrowHeadMesh()
+    private static Mesh CreateDirectionArrowMesh()
     {
-        var mesh = new Mesh { name = "ArrowHeadMesh" };
-        const int segments = 24;
-        const float radius = 0.12f;
-        const float length = 0.24f;
-        var vertices = new Vector3[segments + 2];
-        var triangles = new int[segments * 6];
+        var mesh = new Mesh { name = "DirectionArrowMesh" };
+        const float halfThickness = 0.018f;
 
-        vertices[0] = new Vector3(0f, 0f, length * 0.5f);
-        vertices[1] = new Vector3(0f, 0f, -length * 0.5f);
-        for (var i = 0; i < segments; i++)
+        var outline = new[]
         {
-            var angle = i / (float)segments * Mathf.PI * 2f;
-            vertices[i + 2] = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, -length * 0.5f);
+            new Vector2(0f, 0.30f),
+            new Vector2(0.19f, 0.08f),
+            new Vector2(0.09f, 0.08f),
+            new Vector2(0.09f, -0.24f),
+            new Vector2(-0.09f, -0.24f),
+            new Vector2(-0.09f, 0.08f),
+            new Vector2(-0.19f, 0.08f)
+        };
+
+        var vertices = new Vector3[outline.Length * 2];
+        for (var i = 0; i < outline.Length; i++)
+        {
+            vertices[i] = new Vector3(outline[i].x, halfThickness, outline[i].y);
+            vertices[i + outline.Length] = new Vector3(outline[i].x, -halfThickness, outline[i].y);
         }
 
-        var tri = 0;
-        for (var i = 0; i < segments; i++)
+        var triangles = new[]
         {
-            var current = i + 2;
-            var next = i == segments - 1 ? 2 : i + 3;
-            triangles[tri++] = 0;
-            triangles[tri++] = current;
-            triangles[tri++] = next;
-            triangles[tri++] = 1;
-            triangles[tri++] = next;
-            triangles[tri++] = current;
-        }
+            0, 1, 2,
+            0, 2, 3,
+            0, 3, 4,
+            0, 4, 5,
+            0, 5, 6,
+
+            7, 9, 8,
+            7, 10, 9,
+            7, 11, 10,
+            7, 12, 11,
+            7, 13, 12,
+
+            0, 7, 8, 0, 8, 1,
+            1, 8, 9, 1, 9, 2,
+            2, 9, 10, 2, 10, 3,
+            3, 10, 11, 3, 11, 4,
+            4, 11, 12, 4, 12, 5,
+            5, 12, 13, 5, 13, 6,
+            6, 13, 7, 6, 7, 0
+        };
 
         mesh.vertices = vertices;
         mesh.triangles = triangles;
